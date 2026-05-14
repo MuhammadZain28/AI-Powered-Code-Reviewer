@@ -2,6 +2,8 @@ import os
 import re
 from app.utils.logger import get_logger
 from app.utils.chunker import Chunker
+from app.services.embedding_service import EmbeddingService
+from app.vector_store.faiss import FaissIndex
 
 class ParserService:
     ignored_dirs = {'.git', 'node_modules', 'venv', '.venv', '.next', '__pycache__', 'dist', 'build', 'target', 'out', 'bin', 'obj', 'logs', 'coverage', 'reports', 'docs', 'examples', 'samples', 'test', 'tests', 'spec', 'specs', 'mock', 'mocks', 'fixture', 'fixtures'}
@@ -9,6 +11,8 @@ class ParserService:
     def __init__(self, repo_path: str):
         self.repo_path = repo_path
         self.logger = get_logger("ParserService")
+        self.embedding_service = EmbeddingService()
+        self.faiss_index = FaissIndex(dimension=384)
 
     def is_ignored_dir(self, dir_name: str) -> bool:
         return dir_name in self.ignored_dirs
@@ -64,7 +68,17 @@ class ParserService:
         code = self.read_file(file_path)
         code = self.clean_code(code)
         chunker = Chunker(code, language)
-        return chunker.chunk_code()
+        chunks = chunker.chunk_code()
+        if not chunks:
+            self.logger.warning(f"No chunks extracted from {file_path}")
+            return [{
+            'id': 0,
+            'code': code,
+            'start_line': 1,
+            'end_line': code.count('\n') + 1,
+            'type': 'file'
+            }]
+        return chunks
 
     def parse_project(self) -> dict:
         code_files = self.scan_project()
@@ -80,12 +94,15 @@ class ParserService:
         return project_data
 
 if __name__ == "__main__":
-    repo_path = r"D:\Project\AI-Powered Code Reviewer"
+    repo_path = r"D:\Project\NUCES"
     parser_service = ParserService(repo_path)
     parsed_data = parser_service.parse_project()
 
     for file, data in parsed_data.items():
-        print(f"File: {file}")
-        print(f"Language: {data['language']}")
-        for chunk in data['chunks']:
-            print(f"  Chunk ID: {chunk['id']}, Type: {chunk['type']}, Lines: {chunk['start_line']}-{chunk['end_line']}")
+        embed_chunks = parser_service.embedding_service.embed_chunks(data['chunks'], data['language'])
+        print(f"Metadata for file: {embed_chunks[0]['meta']}")
+        print(f"Embeddings shape: {embed_chunks[0]['vector'].shape}")
+        print(f"Embeddings Vector: {embed_chunks[0]['vector'][:5]}")
+        print("-" * 40)
+        faiss_id = parser_service.faiss_index.add_embeddings([chunk['vector'] for chunk in embed_chunks])
+        print(f"Added {len(embed_chunks)} chunks from {file} to Faiss index with ID: {faiss_id}")
