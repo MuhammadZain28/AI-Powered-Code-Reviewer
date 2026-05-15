@@ -1,9 +1,10 @@
 import os
 import re
+import hashlib
 from app.utils.logger import get_logger
 from app.utils.chunker import Chunker
 from app.services.embedding_service import EmbeddingService
-from app.vector_store.faiss import FaissIndex
+from app.utils.faiss import FaissIndex
 
 class ParserService:
     ignored_dirs = {'.git', 'node_modules', 'venv', '.venv', '.next', '__pycache__', 'dist', 'build', 'target', 'out', 'bin', 'obj', 'logs', 'coverage', 'reports', 'docs', 'examples', 'samples', 'test', 'tests', 'spec', 'specs', 'mock', 'mocks', 'fixture', 'fixtures'}
@@ -45,6 +46,9 @@ class ParserService:
         }
         return language_map.get(ext, 'Unknown')
 
+    def file_hash(self, content: str) -> str:
+        return hashlib.sha256(content.encode('utf-8')).hexdigest()
+
     def clean_code(self, code: str) -> str:
         code = re.sub(r'//.*', '', code)
 
@@ -64,13 +68,11 @@ class ParserService:
             self.logger.error(f"Error reading file {file_path}: {e}")
             return ""
 
-    def chunk_code(self, file_path: str, language: str) -> list:
-        code = self.read_file(file_path)
-        code = self.clean_code(code)
+    def chunk_code(self, code: str, language: str, file_path: str) -> list:
         chunker = Chunker(code, language)
         chunks = chunker.chunk_code()
         if not chunks:
-            self.logger.warning(f"No chunks extracted from {file_path}")
+            self.logger.warning(f"No chunks extracted from code in language {file_path}. Returning entire file as one chunk.")
             return [{
             'id': 0,
             'code': code,
@@ -86,9 +88,12 @@ class ParserService:
 
         for file in code_files:
             language = self.detect_language(file)
-            code_chunks = self.chunk_code(file, language)
+            code = self.read_file(file)
+            code = self.clean_code(code)
+            code_chunks = self.chunk_code(code, language, file)
             project_data[file] = {
                 'language': language,
+                'hash': self.file_hash(code),
                 'chunks': code_chunks
             }
         return project_data
@@ -98,11 +103,10 @@ if __name__ == "__main__":
     parser_service = ParserService(repo_path)
     parsed_data = parser_service.parse_project()
 
-    for file, data in parsed_data.items():
-        embed_chunks = parser_service.embedding_service.embed_chunks(data['chunks'], data['language'])
-        print(f"Metadata for file: {embed_chunks[0]['meta']}")
-        print(f"Embeddings shape: {embed_chunks[0]['vector'].shape}")
-        print(f"Embeddings Vector: {embed_chunks[0]['vector'][:5]}")
-        print("-" * 40)
-        faiss_id = parser_service.faiss_index.add_embeddings([chunk['vector'] for chunk in embed_chunks])
-        print(f"Added {len(embed_chunks)} chunks from {file} to Faiss index with ID: {faiss_id}")
+    for file_path, data in parsed_data.items():
+        print(f"File: {file_path}")
+        print(f"Language: {data['language']}")
+        print(f"Hash: {data['hash']}")
+        print("Chunks:")
+        for chunk in data['chunks']:
+            print(f"  - ID: {chunk['id']}, Type: {chunk['type']}, Lines: {chunk['start_line']}-{chunk['end_line']}")
