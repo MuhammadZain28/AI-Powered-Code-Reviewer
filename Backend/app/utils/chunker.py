@@ -24,9 +24,10 @@ TARGET_NODES = {
     "function_declaration"
 }
 class Chunker():
-    def __init__(self, source_code: str, language: str):
+    def __init__(self, source_code: str, language: str, file_path: str):
         self.source_code = source_code
         self.language = language
+        self.file_path = file_path
         self.lines = source_code.splitlines()
         self.logger = get_logger("Chunker")
         self.current_class = None
@@ -56,8 +57,9 @@ class Chunker():
 
     def build_chunk(self, node, chunk_type):
         chunk = {
-            'id': self.chunk_id,
-            'code': self.get_source_segment(node),
+            'embedding_id': self.chunk_id,
+            'name': f"{self.file_path}_{chunk_type}_{self.chunk_id}",
+            'content': self.get_source_segment(node),
             'start_line': node.start_point[0] + 1,
             'end_line': node.end_point[0] + 1,
             'type': chunk_type

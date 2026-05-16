@@ -1,13 +1,15 @@
 import os
 from app.db_manager.project_manager import ProjectManager
 from app.utils.logger import get_logger
+from app.models.files import File
 
 class Project:
-    def __init__(self, id: str, name: str, path: str, description: str):
+    def __init__(self, id: str, name: str, path: str, description: str, files: list = None):
         self.id = id
         self.name = name
         self.path = path
         self.description = description
+        self.files = files if files is not None else []
         self.__project_manager = ProjectManager()
         self.__logger = get_logger("Project")
 
@@ -39,7 +41,19 @@ class Project:
 
     async def fetch(self):
         if self.id is not None:
-            return await self.__project_manager.get_project_by_id(self.id)
+            p = await self.__project_manager.get_project_by_id(self.id)
+            if p:
+                f = await File(id=None, project_id=self.id, path="", language="", hash="").fetch_project_files(self.id)
+                if f:
+                    self.files = [dict(row) for row in f]
+                else:
+                    self.files = []
+                project = Project(id=p['id'], name=p['name'], path=p['path'], description=p['description'], files=self.files)
+                self.__logger.info(f"Fetched project with ID {self.id}")
+                return project
+            else:
+                self.__logger.warning(f"Project with ID {self.id} not found in the database.")
+                return None
         else:
             self.__logger.warning("Attempted to retrieve a project that does not exist in the database.")
             return None

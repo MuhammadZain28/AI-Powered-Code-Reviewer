@@ -32,9 +32,11 @@ class EmbeddingService:
             if embedding is not None:
                 embeddings.append({
                     'meta': {
-                        'id': chunk.get('id'),
+                        'embedding_id': chunk.get('embedding_id'),
                         'type': chunk.get('type'),
+                        'name': chunk.get('name'),
                         'language': language,
+                        'content': chunk.get('content'),
                         'start_line': chunk.get('start_line'),
                         'end_line': chunk.get('end_line')
                     },
