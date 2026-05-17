@@ -11,3 +11,13 @@ async def parse_project(project_id: str, repo_path: str):
         return parsed_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@parse_router.get("/search", response_model=list)
+async def search_chunks(query: str, k: int = 5):
+    try:
+        controller = ParseController(repo_path="")
+        results = await controller.search_chunks(query, k)
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

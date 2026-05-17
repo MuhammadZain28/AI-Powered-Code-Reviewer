@@ -19,6 +19,6 @@ class ChunkManager:
         query="""SELECT id, file_id, chunk_type, name, start_line, end_line, content FROM chunks WHERE file_id = $1;"""
         return self.db.fetch(query, file_id)
 
-    def get_chunks(self, embedding_id: str):
+    async def get_chunks(self, id: str):
         query="""SELECT id, file_id, chunk_type, name, start_line, end_line, content FROM chunks WHERE id = $1;"""
-        return self.db.fetch(query, embedding_id)
+        return await self.db.fetchrow(query, id)

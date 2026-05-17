@@ -36,3 +36,26 @@ class ParseController:
                 ids.append(chunk.id)
             self.faiss_index.add_embeddings(vector, ids)
         return parsed_data
+
+    async def search_chunks(self, query: str, k: int = 5):
+        query_vector = self.embedding_service.model.encode(query, convert_to_numpy=True)
+        ids, scores = self.faiss_index.search(query_vector, k)
+        results = []
+        for chunk_id, score in zip(ids, scores):
+            chunk = await Chunk(id=chunk_id, file_id=None, chunk_type="", name="", start_line=0, end_line=0, content="").fetch()
+            if chunk:
+                results.append({
+                    "id": chunk['id'],
+                    "file_id": chunk['file_id'],
+                    "chunk_type": chunk['chunk_type'],
+                    "name": chunk['name'],
+                    "start_line": chunk['start_line'],
+                    "end_line": chunk['end_line'],
+                    "content": chunk['content'],
+                    "score": float(score)
+                })
+        return results
+
+    def load_faiss_index(self):
+        self.faiss_index.load_index()
+        return self.faiss_index.index.ntotal

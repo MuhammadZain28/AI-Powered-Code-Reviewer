@@ -29,3 +29,10 @@ class Chunk:
         else:
             self.__logger.warning("Attempted to retrieve chunks for a file that does not exist in the database.")
             return []
+
+    async def fetch(self):
+        if self.id is not None:
+            return await self.__chunk_manager.get_chunks(self.id)
+        else:
+            self.__logger.warning("Attempted to retrieve a chunk that does not exist in the database.")
+            return None
