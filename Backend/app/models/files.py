@@ -1,6 +1,5 @@
 from app.db_manager.files_manager import FileManager
 from app.utils.logger import get_logger
-from app.models.chunks import Chunk
 
 
 class File:

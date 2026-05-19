@@ -40,17 +40,18 @@ class FaissIndex:
 
 
     def search(self, vector, k=5):
+        """Search for similar embeddings in the index"""
         self.load_index()
 
         vector = np.array([vector], dtype=np.float32)
 
         faiss.normalize_L2(vector)
-
+        # Perform the search
         scores, ids = self.index.search(vector, k)
 
         self.__logger.info(f"Search results - IDs: {ids[0]}, Scores: {scores[0]}")
 
-        return ids[0], scores[0]
+        return (ids[0], scores[0])
 
 if __name__ == "__main__":
     faiss_index = FaissIndex(dimension=384)

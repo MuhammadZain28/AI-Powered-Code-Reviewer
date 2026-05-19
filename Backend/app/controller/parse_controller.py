@@ -20,7 +20,7 @@ class ParseController:
         for file_path, file_data in parsed_data.items():
             file = File(id=None, project_id=project_id, path=file_path, language=file_data['language'], hash=file_data['hash'])
             await file.save()
-            embeddings = self.embedding_service.embed_chunks(file_data['chunks'], file_data['language'])
+            embeddings = self.embedding_service.embed_chunks(file_data['chunks'], file_data['language'], file=file_path.split('/')[-1])
             for chunk_data in embeddings:
                 chunk = Chunk(
                     id=None,
@@ -34,7 +34,9 @@ class ParseController:
                 await chunk.save()
                 vector.append(chunk_data['vector'])
                 ids.append(chunk.id)
-            self.faiss_index.add_embeddings(vector, ids)
+                self.__logger.info(f"Processed chunk {chunk.name} in file {file_path} with embedding ID {chunk.id}.")
+        self.__logger.info(f"Processed file {file_path} with {len(vector)} vectors and {len(ids)} ids.")
+        self.faiss_index.add_embeddings(vector, ids)
         return parsed_data
 
     async def search_chunks(self, query: str, k: int = 5):

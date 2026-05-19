@@ -45,17 +45,6 @@ class ParserService:
     def file_hash(self, content: str) -> str:
         return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
-    def clean_code(self, code: str) -> str:
-        code = re.sub(r'//.*', '', code)
-
-        code = re.sub(r'/\*[\s\S]*?\*/', '', code)
-
-        code = re.sub(r'#.*', '', code)
-
-        code = re.sub(r'\n{3,}', '\n\n', code)
-
-        return code.strip()
-
     def read_file(self, file_path: str) -> str:
         try:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -70,8 +59,7 @@ class ParserService:
         if not chunks:
             self.__logger.warning(f"No chunks extracted from code in language {file_path}. Returning entire file as one chunk.")
             return [{
-            'embedding_id': f"{file_path}_0",
-            'name': f"{file_path}_file_0",
+            'name': f"{file_path.split('/')[-1]}",
             'content': code,
             'start_line': 1,
             'end_line': code.count('\n') + 1,
@@ -86,7 +74,6 @@ class ParserService:
         for file in code_files:
             language = self.detect_language(file)
             code = self.read_file(file)
-            code = self.clean_code(code)
             code_chunks = self.chunk_code(code, language, file)
             project_data[file] = {
                 'language': language,
@@ -94,16 +81,3 @@ class ParserService:
                 'chunks': code_chunks
             }
         return project_data
-
-if __name__ == "__main__":
-    repo_path = r"D:\Project\NUCES"
-    parser_service = ParserService(repo_path)
-    parsed_data = parser_service.parse_project()
-
-    for file_path, data in parsed_data.items():
-        print(f"File: {file_path}")
-        print(f"Language: {data['language']}")
-        print(f"Hash: {data['hash']}")
-        print("Chunks:")
-        for chunk in data['chunks']:
-            print(f"  - ID: {chunk['embedding_id']}, Type: {chunk['type']}, Lines: {chunk['start_line']}-{chunk['end_line']}")
