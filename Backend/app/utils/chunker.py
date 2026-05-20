@@ -1,5 +1,6 @@
+import hashlib
 import re
-
+from app.models.imports import Import
 from tree_sitter import Language, Parser
 import tree_sitter_cpp
 import tree_sitter_java
@@ -29,7 +30,7 @@ class Chunker():
         self.source_code = source_code
         self.language = language
         self.file_path = file_path
-        self.class_chunk = None
+        self.class_chunk = []
         self.imports = []
         self.lines = source_code.splitlines()
         self.complexity = {"branching": 0, "loop": 0, "logical": 0, "function_call": 0, "return": 0}
@@ -49,8 +50,8 @@ class Chunker():
                 self.current_class = self.get_node_name(node)
                 self.inheritances = self.extract_inheritances(node)
                 self.attributes = self.extract_class_attributes(node)
-                self.class_chunk = self.build_class_chunk(node)
-                self.class_chunk['docstring'] = self.extract_docstring(node)
+                self.class_chunk.append(self.build_class(node))
+                self.class_chunk[-1]['docstring'] = self.extract_docstring(node)
             else:
                 chunk = self.build_chunk(node, node.type)
                 chunk['params'] = self.extract_parameters(node)
@@ -59,6 +60,8 @@ class Chunker():
                 chunk['complexity'] = self.complexity
                 self.complexity = {"branching": 0, "loop": 0, "logical": 0, "function_call": 0, "return": 0}
                 self.chunks.append(chunk)
+                if self.class_chunk and self.current_class:
+                    self.class_chunk[-1]['chunks'].append(chunk)
                 return
 
         if node.type in {"import_statement", "import_from_statement"}:
@@ -305,34 +308,40 @@ class Chunker():
 
         return (calls, returns)
 
-    def chunk_code(self) -> list:
+    def chunk_code(self):
         parser = self.get_parser()
         self.source_code = self.clean_code(self.source_code)
         tree = parser.parse(bytes(self.source_code, "utf8"))
         root_node = tree.root_node
         self.extract_chunks(root_node)
-        return self.class_chunk, self.imports, self.chunks
+        return (self.class_chunk, self.imports, self.chunks)
 
-    def build_class_chunk(self, node):
-        chunk = {
+    def build_class(self, node):
+        cls = {
             'name': self.get_node_name(node),
             'inheritances': self.inheritances,
             'attributes': self.attributes,
             'content': self.get_source_segment(node),
             'start_line': node.start_point[0] + 1,
             'end_line': node.end_point[0] + 1,
-            'type': node.type
+            'type': node.type,
+            'chunks': []
         }
-        return chunk
+        return cls
     def build_chunk(self, node, chunk_type):
+        code = self.get_source_segment(node)
         chunk = {
             'name': self.get_node_name(node),
-            'content': self.get_source_segment(node),
+            'content': code,
             'start_line': node.start_point[0] + 1,
             'end_line': node.end_point[0] + 1,
-            'type': chunk_type
+            'type': chunk_type,
+            'hash': self.calculate_hash(code)
         }
         return chunk
+
+    def calculate_hash(self, content: str) -> str:
+        return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
     def get_node_name(self, node):
         for child in node.children:
@@ -365,20 +374,27 @@ class Chunker():
         return code.strip()
 
 if __name__ == "__main__":
-    with open("faiss.py", "r") as f:
+    with open("D:/Project/Test/Graphs.py", "r") as f:
         code = f.read()
 
     print("Clean Code:")
+    
     chunker = Chunker(code, "Python", "faiss.py")
     classes, imports, chunks = chunker.chunk_code()
-    print(f"imports: {imports}")
-    print(f"Class: {classes['name']}")
-    print(f"Inheritances: {classes['inheritances']}")
-    print(f"Attributes: {len(classes['attributes'])}")
-    for chunk in chunks:
-        print(f"Chunk Name: {chunk['name']}")
-        print(f"Chunk Type: {chunk['type']}")
-        print(f"Start Line: {chunk['start_line']}, End Line: {chunk['end_line']}")
-        print(f"Docstring: {chunk['docstring']}")
-        print(f"Complexity: {chunk['complexity']}")
-        print("=========================================================================================")
+    imports = Import(id=None, file_id=None, import_statement=imports[0], language="python")
+    print(f"imports: {imports.normalize_import()}")
+    for cls in classes:
+        print(f"Class: {cls['name']}")
+        print(f"  Inheritances: {cls['inheritances']}")
+        print(f"  Attributes: {cls['attributes']}")
+        print(f"  Docstring: {cls['docstring']}")
+        for chunk in cls['chunks']:
+            print(f"  Chunk: {chunk['name']}")
+            print(f"    Type: {chunk['type']}")
+            print(f"    Start Line: {chunk['start_line']}")
+            print(f"    End Line: {chunk['end_line']}")
+            print(f"    Parameters: {chunk['params']}")
+            print(f"    Calls: {chunk['calls']}")
+            print(f"    Returns: {chunk['returns']}")
+            print(f"    Complexity: {chunk['complexity']}")
+            print(f"    Docstring: {chunk['docstring']}")
