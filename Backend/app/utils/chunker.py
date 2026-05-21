@@ -7,7 +7,7 @@ import tree_sitter_java
 import tree_sitter_javascript
 import tree_sitter_typescript
 import tree_sitter_python
-# from app.utils.logger import get_logger
+from app.utils.logger import get_logger
 
 
 LANGUAGES = {
@@ -34,7 +34,7 @@ class Chunker():
         self.imports = []
         self.lines = source_code.splitlines()
         self.complexity = {"branching": 0, "loop": 0, "logical": 0, "function_call": 0, "return": 0}
-        # self.__logger = get_logger("Chunker")
+        self.__logger = get_logger("Chunker")
         self.current_class = ""
         self.chunks = []
 

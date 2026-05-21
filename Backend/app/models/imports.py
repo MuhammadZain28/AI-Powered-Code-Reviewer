@@ -1,52 +1,46 @@
+from ast import stmt
+
 from app.db_manager.import_manager import ImportManager
+from app.utils.tokenizer import normalize
 
 class Import:
-    def __init__(self, id: int, file_id: int, name: str = None, type: str = None, source: str = None, alias: str = None, import_statement: str = None, language: str = None):
+    def __init__(self, file_id: str, id: int = None, type: str = None, source: str = None, import_statement: str = None, language: str = None, modules: list = [], aliases: list = []):
         self.id = id
         self.file_id = file_id
         self.type = type
         self.source = source
         self.language = language
-        self.alias = alias
-        self.modules = []
+        self.modules = modules
+        self.aliases = aliases
         self.raw_import = import_statement
         self.__import_manager = ImportManager()
 
-    async def save(self):
+    async def save(self, import_statement: str, language: str):
+        normalized = normalize(import_statement, language)
+        normalized = normalized.to_dict()
+        self.type = normalized['type']
+        self.source = normalized['source']
+        self.modules = normalized['modules']
+        self.aliases = normalized['aliases']
+
         if self.id is None:
-            result = await self.__import_manager.insert_import(self.file_id, self.name, self.type, self.source, self.alias, self.modules)
+            print(f"Saving import for file ID {self.file_id} with raw statement: {self.modules} and aliases: {self.aliases}")
+            result = await self.__import_manager.insert_import(self.file_id, self.type, self.source, self.modules, self.aliases)
             self.id = result['id']
             return True
         else:
             return True
 
-    async def fetch_file_imports(self, file_id: int):
+    async def fetch_file_imports(self, file_id: str):
         if self.file_id is not None:
             return await self.__import_manager.get_imports_by_file_id(file_id)
         else:
             return []
 
-    def normalize_import(self):
-        if self.language == "python":
-            self.normalize_py()
-        return {
-            "type": self.type,
-            "source": self.source,
-            "alias": self.alias,
-            "modules": self.modules
-        }
-    def normalize_py(self):
-        if self.raw_import.startswith("import "):
-            self.type = "module"
-            parts = self.raw_import.split()
-            self.modules.append(parts[1].strip())
-            if " as " in parts:
-                self.alias = parts[-1].strip()
-        elif self.raw_import.startswith("from "):
-            self.type = "module"
-            parts = self.raw_import.split()
-            self.source = parts[1]
-            if "import" in parts:
-                self.modules = [part.strip() for part in parts[3:] if part.strip() != "as"]
-                if "as" in parts:
-                    self.alias = parts[-1].strip()
+    async def saving_imports(self, import_statement):
+        for stmt in import_statement:
+            normalized = normalize(stmt['raw'], stmt['language'])
+            normalized = normalized.to_dict()
+            import_obj = Import(id=None, file_id="677f1e7f-98bf-4e37-ac83-c321324525f9", type=normalized['type'], source=normalized['source'], import_statement=stmt['raw'], language=stmt['language'], modules=normalized['modules'], aliases=normalized['aliases'])
+            id = await import_obj.save()
+            print(f"Saved import with ID: {id}")
