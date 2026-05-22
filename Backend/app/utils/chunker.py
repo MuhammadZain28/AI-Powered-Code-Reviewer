@@ -1,4 +1,5 @@
 import hashlib
+import json
 import re
 from app.models.imports import Import
 from tree_sitter import Language, Parser
@@ -24,6 +25,10 @@ TARGET_NODES = {
     "method_declaration",
     "function_declaration",
     "class_definition",
+    "class_declaration",
+    "field_definition",
+    "function_expression",
+    "constructor",
 }
 class Chunker():
     def __init__(self, source_code: str, language: str, file_path: str):
@@ -45,8 +50,7 @@ class Chunker():
 
     def extract_chunks(self, node):
         if node.type in TARGET_NODES:
-
-            if node.type == "class_definition":
+            if node.type in {"class_definition", "class_declaration"}:
                 self.current_class = self.get_node_name(node)
                 self.inheritances = self.extract_inheritances(node)
                 self.attributes = self.extract_class_attributes(node)
@@ -80,6 +84,7 @@ class Chunker():
             return attributes
 
         for child in body.children:
+            print(f"Class Body Child: {child.type} at lines {child.start_point[0]+1}-{child.end_point[0]+1}")
 
             # =========================
             # STATIC / CLASS ATTRIBUTES
@@ -94,12 +99,15 @@ class Chunker():
                     left = expr.child_by_field_name("left")
                     right = expr.child_by_field_name("right")
 
+                    right_value = self.get_source_segment(right) if right else None
+                    print(f"Typed Assignment - Left: {self.get_source_segment(left) if left else None}, Type: {right_value}, Right: {self.get_source_segment(right) if right else None}")
+
                     if left:
 
                         attr = {
                             "name": self.get_source_segment(left),
-                            "type": None,
-                            "default_value": self.get_source_segment(right) if right else None,
+                            "type": "function" if right_value and right_value.endswith("()") else "parameter",
+                            "default_value": right_value,
                             "is_static": True
                         }
 
@@ -111,7 +119,7 @@ class Chunker():
                     left = expr.child_by_field_name("left")
                     right = expr.child_by_field_name("right")
                     type_node = expr.child_by_field_name("type")
-
+                    print(f"Typed Assignment - Left: {self.get_source_segment(left) if left else None}, Type: {self.get_source_segment(type_node) if type_node else None}, Right: {self.get_source_segment(right) if right else None}")
                     if left:
 
                         attr = {
@@ -127,11 +135,10 @@ class Chunker():
             # INSTANCE ATTRIBUTES
             # =========================
 
-            if child.type == "function_definition":
+            if child.type in {"function_definition", "method_definition", "function_declaration", "function_expression", "constructor"}:
 
                 fn_name = self.get_node_name(child)
-
-                if fn_name == "__init__" or fn_name == "constructor" or fn_name == "new" or fn_name == self.current_class:
+                if fn_name in {"__init__", "constructor"}:
 
                     attributes.extend(
                         self.extract_instance_attributes(child)
@@ -140,35 +147,24 @@ class Chunker():
         return attributes
 
     def extract_instance_attributes(self, init_node):
-
         attributes = []
 
         def walk(node):
+            if node.type in {"expression_statement"}:
 
-            if node.type == "assignment":
+                assignment_expr = self.get_source_segment(node)
+                left, right = assignment_expr.split("=")
 
-                left = node.child_by_field_name("left")
-                right = node.child_by_field_name("right")
+                if (left):
+                    print(f"Assignment - Left: {left}, Right: {right}")
+                    attributes.append({
+                        "name": left.strip().split(".")[-1],
+                        "type": "function" if right and right.endswith("()") else "parameter",
+                        "default_value": right,
+                        "is_static": False
+                    })
 
-                if left and left.type == "attribute":
-
-                    object_node = left.child_by_field_name("object")
-                    attr_node = left.child_by_field_name("attribute")
-
-                    if (
-                        object_node and
-                        attr_node and
-                        self.get_source_segment(object_node) == "self"
-                    ):
-
-                        attributes.append({
-                            "name": self.get_source_segment(attr_node),
-                            "type": None,
-                            "default_value": self.get_source_segment(right) if right else None,
-                            "is_static": False
-                        })
-
-            if node.type == "typed_assignment":
+            elif node.type == "typed_assignment":
 
                 left = node.child_by_field_name("left")
                 right = node.child_by_field_name("right")
@@ -181,8 +177,7 @@ class Chunker():
 
                     if (
                         object_node and
-                        attr_node and
-                        self.get_source_segment(object_node) == "self"
+                        attr_node
                     ):
 
                         attributes.append({
@@ -280,6 +275,8 @@ class Chunker():
                 "case_statement",
                 "except_clause",
                 "conditional_expression",
+                "switch_statement",
+                "try_statement"
             ]:
                 self.complexity["branching"] += 1
             elif curr.type in ["for_statement", "while_statement"]:
@@ -288,7 +285,7 @@ class Chunker():
             elif curr.type in ["or_expression", "and_expression"]:
                 self.complexity["logical"] += 1
 
-            elif curr.type == "call":
+            elif curr.type in {"call", "call_expression", "member_expression"}:
                 func_node = curr.child_by_field_name("function")
 
                 if func_node:
@@ -345,7 +342,7 @@ class Chunker():
 
     def get_node_name(self, node):
         for child in node.children:
-            if child.type == "identifier":
+            if child.type in {"identifier", "property_identifier", "field_identifier", "type_identifier"}:
                 return self.source_code[child.start_byte:child.end_byte]
         return "unknown"
 
@@ -374,27 +371,30 @@ class Chunker():
         return code.strip()
 
 if __name__ == "__main__":
-    with open("D:/Project/Test/Graphs.py", "r") as f:
+    # file = r"D:\Project\Inventory-App\backend\controller\customer.js"
+    # language = "JavaScript"
+    file = r"D:\Project\AI-Powered Code Reviewer\Backend\app\utils\faiss.py"
+    language = "Python"
+    with open(file, "r") as f:
         code = f.read()
 
     print("Clean Code:")
-    
-    chunker = Chunker(code, "Python", "faiss.py")
+
+    chunker = Chunker(code, language, "faiss.py")
     classes, imports, chunks = chunker.chunk_code()
-    imports = Import(id=None, file_id=None, import_statement=imports[0], language="python")
-    print(f"imports: {imports.normalize_import()}")
+    print("Imports: ", imports)
     for cls in classes:
         print(f"Class: {cls['name']}")
         print(f"  Inheritances: {cls['inheritances']}")
-        print(f"  Attributes: {cls['attributes']}")
+        print(f"  Attributes: {json.dumps(cls['attributes'], indent=4)}")
         print(f"  Docstring: {cls['docstring']}")
-        for chunk in cls['chunks']:
-            print(f"  Chunk: {chunk['name']}")
-            print(f"    Type: {chunk['type']}")
-            print(f"    Start Line: {chunk['start_line']}")
-            print(f"    End Line: {chunk['end_line']}")
-            print(f"    Parameters: {chunk['params']}")
-            print(f"    Calls: {chunk['calls']}")
-            print(f"    Returns: {chunk['returns']}")
-            print(f"    Complexity: {chunk['complexity']}")
-            print(f"    Docstring: {chunk['docstring']}")
+        # for chunk in cls['chunks']:
+        #     print(f"  Chunk: {chunk['name']}")
+        #     print(f"    Type: {chunk['type']}")
+        #     print(f"    Start Line: {chunk['start_line']}")
+        #     print(f"    End Line: {chunk['end_line']}")
+        #     print(f"    Parameters: {chunk['params']}")
+        #     print(f"    Calls: {chunk['calls']}")
+        #     print(f"    Returns: {chunk['returns']}")
+        #     print(f"    Complexity: {chunk['complexity']}")
+        #     print(f"    Docstring: {chunk['docstring']}")

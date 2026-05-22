@@ -1,8 +1,9 @@
 from app.db_manager.chunks_manager import ChunkManager
+from app.db_manager.call_manager import CallManager
 from app.utils.logger import get_logger
 
 class Chunk:
-    def __init__(self, id: int, file_id: int, chunk_type: int, name: str, start_line: int, end_line: int, content: str, parameters: list = [], return_values: list = [], complexity: dict = {}, hash: str = "", docstring: str = "", class_id: int = None):
+    def __init__(self, id: int, file_id: int, chunk_type: int, name: str, start_line: int, end_line: int, content: str, parameters: list = [], return_values: list = [], complexity: dict = {}, hash: str = "", docstring: str = "", calls: list = [], class_id: int = None):
         self.id = id
         self.file_id = file_id
         self.class_id = class_id
@@ -16,13 +17,17 @@ class Chunk:
         self.complexity = complexity
         self.hash = hash
         self.docstring = docstring
+        self.calls = calls
         self.__chunk_manager = ChunkManager()
+        self.__call_manager = CallManager()
         self.__logger = get_logger("Chunk")
 
     async def save(self):
         if self.id is None:
             result = await self.__chunk_manager.insert_chunk(self.file_id, self.chunk_type, self.name, self.start_line, self.end_line, self.content, self.parameters, self.return_values, self.complexity, self.hash, self.docstring, self.class_id)
             self.id = result['id']
+            for call in self.calls:
+                await self.__call_manager.insert_call(self.id, self.file_id, call)
             self.__logger.info(f"Inserted new chunk with ID {self.id} for file {self.file_id}")
             return True
         else:

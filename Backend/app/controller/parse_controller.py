@@ -48,7 +48,8 @@ class ParseController:
                             'return_values': chunk.get('returns', []),
                             'complexity': chunk.get('complexity', {}),
                             'hash': chunk.get('hash', ""),
-                            'docstring': chunk.get('docstring', "")
+                            'docstring': chunk.get('docstring', ""),
+                            'calls': chunk.get('calls', [])
                         }, class_id=class_id)
                         ids.append(chunk_id)
 
@@ -65,7 +66,8 @@ class ParseController:
                         'return_values': chunk.get('returns', []),
                         'complexity': chunk.get('complexity', {}),
                         'hash': chunk.get('hash', ""),
-                        'docstring': chunk.get('docstring', "")
+                        'docstring': chunk.get('docstring', ""),
+                        'calls': chunk.get('calls', [])
                     }, class_id=None)
                     ids.append(chunk_id)
 
@@ -78,6 +80,7 @@ class ParseController:
         return parsed_data
 
     async def insert_chunk(self, chunk_data: dict, class_id: int = None):
+        print("Chunk Data : ", chunk_data['calls'])
         chunk = Chunk(
             id=None,
             file_id=chunk_data['file_id'],
@@ -91,7 +94,8 @@ class ParseController:
             return_values=chunk_data.get('return_values', []),
             complexity=chunk_data.get('complexity', {}),
             hash=chunk_data.get('hash', ""),
-            docstring=chunk_data.get('docstring', "")
+            docstring=chunk_data.get('docstring', ""),
+            calls=chunk_data.get('calls', [])
         )
         await chunk.save()
         self.__logger.info(f"Inserted new chunk {chunk.name} with ID {chunk.id} into FAISS index.")
