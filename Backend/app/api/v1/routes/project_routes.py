@@ -19,7 +19,7 @@ async def select_project(project_id: str):
         project = await controller.get_project(project_id)
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
-        return {"id": project.id, "name": project.name, "path": project.path, "description": project.description}
+        return {"id": project.id, "name": project.name, "path": project.path, "description": project.description, "files": project.files}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -28,7 +28,7 @@ async def select_all_projects():
     try:
         controller = ProjectController()
         projects = await controller.get_all_projects()
-        return [{"id": project['id'], "name": project['name'], "path": project['path'], "description": project['description']} for project in projects]
+        return [{"id": project['id'], "name": project['name'], "path": project['path'], "description": project['description'], "files": project['files']} for project in projects]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
