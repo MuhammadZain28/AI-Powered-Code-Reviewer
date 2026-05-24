@@ -1,7 +1,7 @@
 import hashlib
-import json
+from app.utils.tokenizer import normalize
 import re
-from app.models.imports import Import
+import json
 from tree_sitter import Language, Parser
 import tree_sitter_cpp
 import tree_sitter_java
@@ -84,8 +84,6 @@ class Chunker():
             return attributes
 
         for child in body.children:
-            print(f"Class Body Child: {child.type} at lines {child.start_point[0]+1}-{child.end_point[0]+1}")
-
             # =========================
             # STATIC / CLASS ATTRIBUTES
             # =========================
@@ -100,7 +98,6 @@ class Chunker():
                     right = expr.child_by_field_name("right")
 
                     right_value = self.get_source_segment(right) if right else None
-                    print(f"Typed Assignment - Left: {self.get_source_segment(left) if left else None}, Type: {right_value}, Right: {self.get_source_segment(right) if right else None}")
 
                     if left:
 
@@ -119,7 +116,7 @@ class Chunker():
                     left = expr.child_by_field_name("left")
                     right = expr.child_by_field_name("right")
                     type_node = expr.child_by_field_name("type")
-                    print(f"Typed Assignment - Left: {self.get_source_segment(left) if left else None}, Type: {self.get_source_segment(type_node) if type_node else None}, Right: {self.get_source_segment(right) if right else None}")
+
                     if left:
 
                         attr = {
@@ -156,7 +153,6 @@ class Chunker():
                 left, right = assignment_expr.split("=")
 
                 if (left):
-                    print(f"Assignment - Left: {left}, Right: {right}")
                     attributes.append({
                         "name": left.strip().split(".")[-1],
                         "type": "function" if right and right.endswith("()") else "parameter",
@@ -370,6 +366,90 @@ class Chunker():
         code = re.sub(r'\n{3,}', '\n\n', code)
         return code.strip()
 
+def classify_calls(chunk_calls: list, imports: list) -> dict:
+        """
+        chunk_calls   = ['faiss.IndexIDMap', 'np.linalg.norm', 'get_logger', 'self.save_index']
+        imports       = parsed import list from your schema
+        class_methods = ['__init__', 'normalize_embeddings', 'add_embeddings', ...]
+        """
+
+        # Step 1: Build alias → source map from imports
+        # np        → numpy        (external)
+        # get_logger → app.utils.logger (internal project)
+        # Path      → pathlib      (stdlib)
+        
+        alias_map = {}
+        for imp in imports:
+            for module, alias in zip(imp["modules"], imp["aliases"]):
+                key = alias if alias else module
+                alias_map[key] = {
+                    "source": imp["source"],
+                    "module": module
+                }
+
+        # Step 2: Known external libraries (expand this list)
+        EXTERNAL_LIBS = {"faiss", "numpy", "np", "torch", "sklearn",
+                        "pandas", "pd", "requests", "flask", "fastapi"}
+
+        STDLIB = {"pathlib", "os", "sys", "json", "re", "math",
+                "collections", "itertools", "typing"}
+
+        result = {
+            "internal_calls": [],       # self.method() — same class
+            "cross_file_calls": [],     # imported from your own project
+            "external_lib_calls": [],   # third party libraries
+            "stdlib_calls": [],         # python standard library
+            "unresolved_calls": []      # couldn't classify
+        }
+
+        for call in chunk_calls:
+            root = call.split(".")[0]   # faiss.IndexIDMap → faiss
+
+            # self.method() — internal to class
+            if root == "self":
+                method_name = call.split(".")[1] if "." in call else call
+                result["internal_calls"].append({
+                    "call": call,
+                    "resolves_to": method_name
+                })
+
+            # aliased or direct external lib
+            elif root in EXTERNAL_LIBS:
+                result["external_lib_calls"].append({
+                    "call": call,
+                    "library": alias_map.get(root, {}).get("source", root)
+                })
+
+            # stdlib
+            elif root in STDLIB:
+                result["stdlib_calls"].append({
+                    "call": call,
+                    "library": alias_map.get(root, {}).get("source", root)
+                })
+
+            # came from an import → could be cross-file project code
+            elif root in alias_map:
+                source = alias_map[root]["source"]
+                # if source has your project namespace → cross-file
+                if source.startswith("app.") or '/' in source:
+                    result["cross_file_calls"].append({
+                        "call": call,
+                        "source_module": source,
+                        "resolves_to": alias_map[root]["module"]
+                    })
+                else:
+                    result["external_lib_calls"].append({
+                        "call": call,
+                        "library": source
+                    })
+
+            else:
+                result["unresolved_calls"].append({
+                    "call": call
+                })
+
+        return result
+
 if __name__ == "__main__":
     # file = r"D:\Project\Inventory-App\backend\controller\customer.js"
     # language = "JavaScript"
@@ -382,19 +462,18 @@ if __name__ == "__main__":
 
     chunker = Chunker(code, language, "faiss.py")
     classes, imports, chunks = chunker.chunk_code()
-    print("Imports: ", imports)
+    import_statements = []
+    for import_statement in imports:
+        import_statement = normalize(import_statement, 'python')
+        import_statements.append(import_statement.to_dict())
+        print(f"Import: {json.dumps(import_statement.to_dict(), indent=2)}")
+    results = []
     for cls in classes:
         print(f"Class: {cls['name']}")
-        print(f"  Inheritances: {cls['inheritances']}")
-        print(f"  Attributes: {json.dumps(cls['attributes'], indent=4)}")
-        print(f"  Docstring: {cls['docstring']}")
-        # for chunk in cls['chunks']:
-        #     print(f"  Chunk: {chunk['name']}")
-        #     print(f"    Type: {chunk['type']}")
-        #     print(f"    Start Line: {chunk['start_line']}")
-        #     print(f"    End Line: {chunk['end_line']}")
-        #     print(f"    Parameters: {chunk['params']}")
-        #     print(f"    Calls: {chunk['calls']}")
-        #     print(f"    Returns: {chunk['returns']}")
-        #     print(f"    Complexity: {chunk['complexity']}")
-        #     print(f"    Docstring: {chunk['docstring']}")
+        for chunk in cls['chunks']:
+            print(f"  Method: {chunk['name']}")
+            print(f"    Complexity: {chunk['complexity']}")
+            chunk['calls'] = classify_calls(chunk['calls'], import_statements)
+            for call_type, calls in chunk['calls'].items():
+                for call in calls:
+                    print(f"    {call_type}: {call['call'], }")

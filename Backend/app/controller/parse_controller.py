@@ -3,26 +3,29 @@ from app.models.files import File
 from app.models.chunks import Chunk
 from app.models.classes import Class
 from app.services.parser_service import ParserService
-from app.services.embedding_service import EmbeddingService
+# from app.services.embedding_service import EmbeddingService
 from app.utils.logger import get_logger
 from app.utils.faiss import FaissIndex
+from app.utils.tokenizer import normalize
+import time
 
 
 class ParseController:
     def __init__(self, repo_path: str):
         self.parser_service = ParserService(repo_path)
-        self.embedding_service = EmbeddingService()
+        # self.embedding_service = EmbeddingService()
         self.faiss_index = FaissIndex(dimension=384)
         self.__logger = get_logger("ParseController")
 
     async def parse_project(self, project_id: str) -> dict:
         vector = []
         ids = []
+        start_time = time.time()
         parsed_data = self.parser_service.parse_project()
         for file_path, file_data in parsed_data.items():
             file = File(id=None, project_id=project_id, path=file_path, language=file_data['language'], hash=file_data['hash'])
-            await file.save()
-            await self.insert_import(file_data['imports'], file_data['language'], file.id)
+            _ = await file.save()
+            _, normalized_imports = await self.insert_import(file_data['imports'], file_data['language'], file.id)
 
             if file_data['classes']:
                 for cls in file_data['classes']:
@@ -50,7 +53,7 @@ class ParseController:
                             'hash': chunk.get('hash', ""),
                             'docstring': chunk.get('docstring', ""),
                             'calls': chunk.get('calls', [])
-                        }, class_id=class_id)
+                        }, class_id=class_id, imports=normalized_imports)
                         ids.append(chunk_id)
 
             else:
@@ -68,19 +71,20 @@ class ParseController:
                         'hash': chunk.get('hash', ""),
                         'docstring': chunk.get('docstring', ""),
                         'calls': chunk.get('calls', [])
-                    }, class_id=None)
+                    }, class_id=None, imports=normalized_imports)
                     ids.append(chunk_id)
 
-            embeddings = self.embedding_service.embed_chunks(file_data['chunks'], file_data['language'], file=file_path)
-            vector.extend(vector['vector'] for vector in embeddings)
+            # embeddings = self.embedding_service.embed_chunks(file_data['chunks'], file_data['language'], file=file_path)
+            # vector.extend(vector['vector'] for vector in embeddings)
 
         self.__logger.info(f"Processed file {file_path} with {len(vector)} vectors and {len(ids)} ids.")
         if len(vector) == len(ids) and len(vector) > 0:
             self.faiss_index.add_embeddings(vector, ids)
+        end_time = time.time()
+        self.__logger.info(f"Completed parsing project {project_id} in {end_time - start_time:.2f} seconds.")
         return parsed_data
 
-    async def insert_chunk(self, chunk_data: dict, class_id: int = None):
-        print("Chunk Data : ", chunk_data['calls'])
+    async def insert_chunk(self, chunk_data: dict, class_id: int = None, imports: list = None):
         chunk = Chunk(
             id=None,
             file_id=chunk_data['file_id'],
@@ -97,7 +101,7 @@ class ParseController:
             docstring=chunk_data.get('docstring', ""),
             calls=chunk_data.get('calls', [])
         )
-        await chunk.save()
+        await chunk.save(imports=imports)
         self.__logger.info(f"Inserted new chunk {chunk.name} with ID {chunk.id} into FAISS index.")
         return chunk.id
 
@@ -118,10 +122,17 @@ class ParseController:
 
     async def insert_import(self, imports: list, language: str, file_id: str):
         import_chunk = Import(file_id=file_id)
+        normalized_imports = []
         for import_statement in imports:
-            await import_chunk.save(import_statement, language)
+            normalized = normalize(import_statement, language)
+            import_chunk.type = normalized.type
+            import_chunk.source = normalized.source
+            import_chunk.modules = normalized.modules
+            import_chunk.aliases = normalized.aliases
+            _ = await import_chunk.save()
+            normalized_imports.append(normalized.to_dict())
             self.__logger.info(f"Inserted new import {import_chunk.modules} with ID {import_chunk.id} into FAISS index.")
-        return import_chunk.id
+        return import_chunk.id, normalized_imports
 
     async def search_chunks(self, query: str, k: int = 5):
         query_vector = self.embedding_service.model.encode(query, convert_to_numpy=True)
@@ -145,3 +156,8 @@ class ParseController:
     def load_faiss_index(self):
         self.faiss_index.load_index()
         return self.faiss_index.index.ntotal
+
+if __name__ == "__main__":
+    import asyncio
+    controller = ParseController(repo_path=r"D:/Project/NUCES")
+    asyncio.run(controller.parse_project(project_id="21ccbbaa-049d-434e-bbc9-65f2e89660fa"))

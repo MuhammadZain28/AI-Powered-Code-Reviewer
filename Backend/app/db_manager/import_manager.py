@@ -5,7 +5,7 @@ class ImportManager:
         self.db = Database()
 
     async def insert_import(self, file_id: str, import_type: str, source: str, modules: list, aliases: list = None):
-        print(f"Inserting import for file ID {file_id} with modules: {modules} and aliases: {aliases}")
+
         query = """
         INSERT INTO imports (file_id, type, source, modules, aliases)
         VALUES ($1, $2, $3, $4, $5)

@@ -18,7 +18,7 @@ class Class:
         if self.id is None:
             result = await self.__class_manager.insert_class(self.file_id, self.name, self.start_line, self.end_line, self.docstring)
             self.id = result['id']
-            print(f"Inserted new class {self.name} with ID {self.id} and attributes {self.attributes}.")
+
             for attr in self.attributes:
                 await self.__attribute_manager.insert_attribute(self.id, attr['name'], attr['type'], attr['default_value'], attr.get('is_static', False))
             return True

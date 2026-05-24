@@ -1,7 +1,7 @@
 from app.db_manager.chunks_manager import ChunkManager
 from app.db_manager.call_manager import CallManager
 from app.utils.logger import get_logger
-
+from app.utils.chunker import classify_calls
 class Chunk:
     def __init__(self, id: int, file_id: int, chunk_type: int, name: str, start_line: int, end_line: int, content: str, parameters: list = [], return_values: list = [], complexity: dict = {}, hash: str = "", docstring: str = "", calls: list = [], class_id: int = None):
         self.id = id
@@ -22,12 +22,17 @@ class Chunk:
         self.__call_manager = CallManager()
         self.__logger = get_logger("Chunk")
 
-    async def save(self):
+    async def save(self, imports: list = None):
         if self.id is None:
             result = await self.__chunk_manager.insert_chunk(self.file_id, self.chunk_type, self.name, self.start_line, self.end_line, self.content, self.parameters, self.return_values, self.complexity, self.hash, self.docstring, self.class_id)
             self.id = result['id']
-            for call in self.calls:
-                await self.__call_manager.insert_call(self.id, self.file_id, call)
+
+            self.calls = classify_calls(self.calls, imports)
+
+            for call_types, calls in self.calls.items():
+                for call in calls:
+                    await self.__call_manager.insert_call(caller_id=self.id, function_name=call['call'], library=call.get('library'), call_type=call_types, resolve_to=call.get('resolves_to'))
+
             self.__logger.info(f"Inserted new chunk with ID {self.id} for file {self.file_id}")
             return True
         else:
