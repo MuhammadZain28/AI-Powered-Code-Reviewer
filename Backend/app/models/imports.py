@@ -2,7 +2,7 @@ from app.db_manager.import_manager import ImportManager
 from app.utils.tokenizer import normalize
 
 class Import:
-    def __init__(self, file_id: str, id: int = None, type: str = None, source: str = None, import_statement: str = None, language: str = None, modules: list = [], aliases: list = []):
+    def __init__(self, file_id: str = None, id: int = None, type: str = None, source: str = None, import_statement: str = None, language: str = None, modules: list = [], aliases: list = []):
         self.id = id
         self.file_id = file_id
         self.type = type
@@ -28,9 +28,9 @@ class Import:
         else:
             return []
 
-    async def saving_imports(self, import_statement):
-        for stmt in import_statement:
-            normalized = normalize(stmt['raw'], stmt['language'])
-            normalized = normalized.to_dict()
-            import_obj = Import(id=None, file_id="677f1e7f-98bf-4e37-ac83-c321324525f9", type=normalized['type'], source=normalized['source'], import_statement=stmt['raw'], language=stmt['language'], modules=normalized['modules'], aliases=normalized['aliases'])
-            _ = await import_obj.save()
+    async def save_all_imports(self, data: list):
+        columns = ['id', 'file_id', 'type', 'source']
+        await self.__import_manager.copy_import_table(data, columns)
+
+    async def save_import_modules(self, data: list):
+        await self.__import_manager.copy_import_modules_table(data, ['import_id', 'module', 'alias'])

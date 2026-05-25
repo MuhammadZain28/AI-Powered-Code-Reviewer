@@ -20,3 +20,9 @@ class ImportManager:
     async def delete_imports_by_file_id(self, file_id: str):
         query = "DELETE FROM imports WHERE file_id = $1;"
         await self.db.execute(query, file_id)
+
+    async def copy_import_table(self, data: list, columns: list):
+        await self.db.copy_to_table('imports', data, columns=columns)
+
+    async def copy_import_modules_table(self, data: list, columns: list):
+        await self.db.copy_to_table('import_modules', data, columns=columns)

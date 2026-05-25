@@ -22,3 +22,6 @@ class ClassManager:
 
     async def close(self):
         await self.db.disconnect()
+
+    async def copy_table(self, data: list, columns: list):
+        await self.db.copy_to_table('classes', data, columns=columns)

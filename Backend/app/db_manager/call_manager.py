@@ -23,3 +23,6 @@ class CallManager:
     async def delete_calls_by_chunk_id(self, chunk_id: int):
         query = "DELETE FROM calls WHERE chunk_id = $1;"
         await self.db.execute(query, chunk_id)
+
+    async def copy_calls_table(self, data: list, columns: list):
+        await self.db.copy_to_table('calls', data, columns=columns)

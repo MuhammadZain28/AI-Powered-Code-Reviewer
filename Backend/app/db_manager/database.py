@@ -79,3 +79,34 @@ class Database:
             except Exception as e:
                 self.logger.error(f"Error fetching row: {e}")
                 raise
+
+    async def copy_to_table(self, table_name: str, data: list, columns: list):
+        if not self.pool:
+            self.logger.warning("Database connection not established. Attempting to connect...")
+            self.pool = await asyncpg.create_pool(dsn=self.dsn)
+        async with self.pool.acquire() as connection:
+            try:
+                await connection.copy_records_to_table(table_name, records=data, columns=columns)
+
+            except Exception as e:
+                self.logger.error(f"Error copying data to table: {e}")
+                raise
+
+
+    async def copy_multiple_tables(self, table_data: dict):
+
+        if not self.pool:
+            self.pool = await asyncpg.create_pool(dsn=self.dsn)
+
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+
+                for table_name, data in table_data.items():
+                    if not data["data"]:
+                        continue
+
+                    await conn.copy_records_to_table(
+                        table_name,
+                        records=data["data"],
+                        columns=data["columns"]
+                    )

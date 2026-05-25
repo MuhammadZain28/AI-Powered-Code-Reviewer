@@ -12,6 +12,9 @@ class FileManager:
         """
         return await self.db.fetchrow(query, project_id, path, language, hash)
 
+    async def copy_table(self, data: list, columns: list):
+        await self.db.copy_to_table('files', data, columns)
+
     async def get_file_by_id(self, file_id: str):
         query = "SELECT id, project_id, path, language, hash FROM files WHERE id = $1;"
         return await self.db.fetchrow(query, file_id)

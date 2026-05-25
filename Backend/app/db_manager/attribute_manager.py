@@ -19,3 +19,6 @@ class AttributeManager:
     async def delete_attributes_by_class_id(self, class_id: int):
         query = "DELETE FROM class_attributes WHERE class_id = $1;"
         await self.db.execute(query, class_id)
+
+    async def copy_attributes_table(self, data: list, columns: list):
+        await self.db.copy_to_table('class_attributes', data, columns=columns)

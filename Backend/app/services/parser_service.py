@@ -3,6 +3,7 @@ import re
 import hashlib
 from app.utils.logger import get_logger
 from app.utils.chunker import Chunker
+from uuid6 import uuid7
 
 class ParserService:
     ignored_dirs = {'.git', 'node_modules', 'venv', '.venv', '.next', '__pycache__', 'dist', 'build', 'target', 'out', 'bin', 'obj', 'logs', 'coverage', 'reports', 'docs', 'examples', 'samples', 'test', 'tests', 'spec', 'specs', 'mock', 'mocks', 'fixture', 'fixtures'}
@@ -53,8 +54,8 @@ class ParserService:
             self.__logger.error(f"Error reading file {file_path}: {e}")
             return ""
 
-    def chunk_code(self, code: str, language: str, file_path: str) -> list:
-        chunker = Chunker(code, language, file_path)
+    def chunk_code(self, code: str, language: str, file_path: str, id: str) -> list:
+        chunker = Chunker(code, language, file_path, id)
         chunks = chunker.chunk_code()
         if not chunks:
             self.__logger.warning(f"No chunks extracted from code in language {file_path}. Returning entire file as one chunk.")
@@ -67,19 +68,40 @@ class ParserService:
             }]
         return chunks
 
-    def parse_project(self) -> dict:
+    def parse_project(self, project_id) -> dict:
         code_files = self.scan_project()
-        project_data = {}
+        project_files, project_classes, project_imports, project_chunks, project_calls, project_attributes, project_import_modules = [], [], [], [], [], [], []
 
         for file in code_files:
             language = self.detect_language(file)
             code = self.read_file(file)
-            classes, imports, chunks = self.chunk_code(code, language, file)
-            project_data[file] = {
-                'language': language,
-                'hash': self.file_hash(code),
-                'classes': classes,
-                'imports': imports,
-                'chunks': chunks
-            }
-        return project_data
+            id = uuid7()
+
+            file_classes, file_imports, file_chunks, file_calls, file_attributes, file_import_modules = self.chunk_code(code, language, file, id)
+
+            self.__logger.info(f"Extracted {len(file_classes)} classes from {file}")
+
+            project_files.append((
+                id,                         # unique identifier for the file
+                project_id,                 # associate file with its project
+                file,                       # file path for reference
+                language,                   # programming language of the file
+                self.file_hash(code),       # hash of the file content for quick comparisons
+            ))
+
+            project_classes.extend(file_classes)
+            project_imports.extend(file_imports)
+            project_chunks.extend(file_chunks)
+            project_calls.extend(file_calls)
+            project_attributes.extend(file_attributes)
+            project_import_modules.extend(file_import_modules)
+            self.__logger.info(f"Extracted {len(file_chunks)} code chunks from {file}")
+        return {
+            'files': project_files,
+            'classes': project_classes,
+            'imports': project_imports,
+            'chunks': project_chunks,
+            'calls': project_calls,
+            'attributes': project_attributes,
+            'import_modules': project_import_modules
+        }

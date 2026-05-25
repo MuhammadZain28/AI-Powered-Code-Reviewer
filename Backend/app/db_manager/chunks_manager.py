@@ -25,3 +25,6 @@ class ChunkManager:
     async def get_chunks(self, id: str):
         query="""SELECT id, file_id, chunk_type, name, start_line, end_line, content, parameters, return_values, complexity, hash, docstring, class_id FROM chunks WHERE id = $1;"""
         return await self.db.fetchrow(query, id)
+
+    async def copy_table(self, data: list, columns: list):
+        await self.db.copy_to_table('chunks', data, columns)

@@ -1,5 +1,6 @@
 import hashlib
 from app.utils.tokenizer import normalize
+from uuid6 import uuid7
 import re
 import json
 from tree_sitter import Language, Parser
@@ -31,17 +32,21 @@ TARGET_NODES = {
     "constructor",
 }
 class Chunker():
-    def __init__(self, source_code: str, language: str, file_path: str):
+    def __init__(self, source_code: str, language: str, file_path: str, file_id: str):
         self.source_code = source_code
         self.language = language
         self.file_path = file_path
+        self.file_id = file_id
         self.class_chunk = []
         self.imports = []
-        self.lines = source_code.splitlines()
-        self.complexity = {"branching": 0, "loop": 0, "logical": 0, "function_call": 0, "return": 0}
-        self.__logger = get_logger("Chunker")
-        self.current_class = ""
+        self.imports_modules = []
+        self.calls = []
+        self.attributes = []
         self.chunks = []
+        self.complexity = {"branching": 0, "loop": 0, "logical": 0, "function_call": 0, "return": 0}
+        self.lines = source_code.splitlines()
+        self.__logger = get_logger("Chunker")
+        self.current_class = None
 
     def get_parser(self):
         parser = Parser()
@@ -51,25 +56,32 @@ class Chunker():
     def extract_chunks(self, node):
         if node.type in TARGET_NODES:
             if node.type in {"class_definition", "class_declaration"}:
-                self.current_class = self.get_node_name(node)
+                self.current_class = uuid7()
                 self.inheritances = self.extract_inheritances(node)
-                self.attributes = self.extract_class_attributes(node)
-                self.class_chunk.append(self.build_class(node))
-                self.class_chunk[-1]['docstring'] = self.extract_docstring(node)
+                self.attributes.extend(self.extract_class_attributes(node))
+                docstring = self.extract_docstring(node)
+                self.class_chunk.append(self.build_class(self.current_class, node, docstring))
+
             else:
-                chunk = self.build_chunk(node, node.type)
-                chunk['params'] = self.extract_parameters(node)
-                chunk['calls'], chunk["returns"] = self.extract_calls(node)
-                chunk['docstring'] = self.extract_docstring(node)
-                chunk['complexity'] = self.complexity
-                self.complexity = {"branching": 0, "loop": 0, "logical": 0, "function_call": 0, "return": 0}
+                id = uuid7()
+                params = self.extract_parameters(node)
+                calls, returns = self.extract_calls(node)
+                docstring = self.extract_docstring(node)
+
+                chunk = self.build_chunk(id, node, node.type, docstring=docstring, parameters=params, return_values=returns)
+
+                self.calls.extend(classify_calls(calls, self.imports, self.imports_modules, id))
+
                 self.chunks.append(chunk)
-                if self.class_chunk and self.current_class:
-                    self.class_chunk[-1]['chunks'].append(chunk)
+
                 return
 
         if node.type in {"import_statement", "import_from_statement"}:
-            self.imports.append(self.get_source_segment(node))
+            import_code = self.get_source_segment(node)
+
+            normalized_import = normalize(import_code, self.language, file_id=self.file_id)
+            self.imports.append(normalized_import[0])
+            self.imports_modules.extend(normalized_import[1])
 
         for child in node.children:
             self.extract_chunks(child)
@@ -101,12 +113,13 @@ class Chunker():
 
                     if left:
 
-                        attr = {
-                            "name": self.get_source_segment(left),
-                            "type": "function" if right_value and right_value.endswith("()") else "parameter",
-                            "default_value": right_value,
-                            "is_static": True
-                        }
+                        attr = (
+                            self.current_class,
+                            self.get_source_segment(left),
+                            "function" if right_value and right_value.endswith("()") else "parameter",
+                            right_value,
+                            True
+                        )
 
                         attributes.append(attr)
 
@@ -119,12 +132,13 @@ class Chunker():
 
                     if left:
 
-                        attr = {
-                            "name": self.get_source_segment(left),
-                            "type": self.get_source_segment(type_node) if type_node else None,
-                            "default_value": self.get_source_segment(right) if right else None,
-                            "is_static": True
-                        }
+                        attr = (
+                            self.current_class,
+                            self.get_source_segment(left),
+                            self.get_source_segment(type_node) if type_node else None,
+                            self.get_source_segment(right) if right else None,
+                            True
+                        )
 
                         attributes.append(attr)
 
@@ -153,12 +167,13 @@ class Chunker():
                 left, right = assignment_expr.split("=")
 
                 if (left):
-                    attributes.append({
-                        "name": left.strip().split(".")[-1],
-                        "type": "function" if right and right.endswith("()") else "parameter",
-                        "default_value": right,
-                        "is_static": False
-                    })
+                    attributes.append((
+                        self.current_class,                                             # associate attribute with its class
+                        left.strip().split(".")[-1],                                    # attribute name (e.g., "self.attribute" → "attribute")
+                        "function" if right and right.endswith("()") else "parameter",  # type based on whether it looks like a function call
+                        right,                                                          # default value (the right-hand side of the assignment)
+                        False                                                           # instance attribute, not static
+                    ))
 
             elif node.type == "typed_assignment":
 
@@ -176,12 +191,13 @@ class Chunker():
                         attr_node
                     ):
 
-                        attributes.append({
-                            "name": self.get_source_segment(attr_node),
-                            "type": self.get_source_segment(type_node) if type_node else None,
-                            "default_value": self.get_source_segment(right) if right else None,
-                            "is_static": False
-                        })
+                        attributes.append((
+                            self.current_class,
+                            self.get_source_segment(attr_node),
+                            self.get_source_segment(type_node) if type_node else None,
+                            self.get_source_segment(right) if right else None,
+                            False
+                        ))
 
             for child in node.children:
                 walk(child)
@@ -307,30 +323,38 @@ class Chunker():
         tree = parser.parse(bytes(self.source_code, "utf8"))
         root_node = tree.root_node
         self.extract_chunks(root_node)
-        return (self.class_chunk, self.imports, self.chunks)
+        return (self.class_chunk, self.imports, self.chunks, self.calls, self.attributes, self.imports_modules)
 
-    def build_class(self, node):
-        cls = {
-            'name': self.get_node_name(node),
-            'inheritances': self.inheritances,
-            'attributes': self.attributes,
-            'content': self.get_source_segment(node),
-            'start_line': node.start_point[0] + 1,
-            'end_line': node.end_point[0] + 1,
-            'type': node.type,
-            'chunks': []
-        }
+    def build_class(self, id, node, docstring=None):
+        cls = (
+            id,                             # unique identifier for the class
+            self.file_id,                   # associate class with its file
+            self.get_node_name(node),       # human-readable class name
+            node.start_point[0] + 1,        # line numbers are 0-indexed in tree-sitter
+            node.end_point[0] + 1,          # end line of the class
+            docstring,                      # docstring for the class
+            self.inheritances               # list of parent classes
+        )
         return cls
-    def build_chunk(self, node, chunk_type):
+
+    def build_chunk(self, id, node, chunk_type, docstring=None, parameters=None, return_values=None):
         code = self.get_source_segment(node)
-        chunk = {
-            'name': self.get_node_name(node),
-            'content': code,
-            'start_line': node.start_point[0] + 1,
-            'end_line': node.end_point[0] + 1,
-            'type': chunk_type,
-            'hash': self.calculate_hash(code)
-        }
+        chunk = (
+            id,                             # unique identifier for the chunk
+            self.file_id,                   # associate chunk with its file
+            self.current_class,             # associate chunk with its class (if any)
+            self.get_node_name(node),       # human-readable name (function name, method name, etc.)
+            code,                           # actual code content of the chunk
+            node.start_point[0] + 1,        # line numbers are 0-indexed in tree-sitter
+            node.end_point[0] + 1,          # end line of the chunk
+            chunk_type,                     # type of chunk (function, method, class, etc.)
+            self.calculate_hash(code),      # hash of the chunk content for quick comparisons
+            docstring,                      # docstring for the chunk
+            parameters,                     # list of parameters if it's a function/method
+            return_values,                  # list of return values if it's a function/method
+            json.dumps(self.complexity)     # complexity metrics for the chunk
+        )
+        self.complexity = {"branching": 0, "loop": 0, "logical": 0, "function_call": 0, "return": 0}
         return chunk
 
     def calculate_hash(self, content: str) -> str:
@@ -366,7 +390,7 @@ class Chunker():
         code = re.sub(r'\n{3,}', '\n\n', code)
         return code.strip()
 
-def classify_calls(chunk_calls: list, imports: list) -> dict:
+def classify_calls(chunk_calls: list, imports: list, import_modules: list, chunk_id: str):
         """
         chunk_calls   = ['faiss.IndexIDMap', 'np.linalg.norm', 'get_logger', 'self.save_index']
         imports       = parsed import list from your schema
@@ -377,13 +401,15 @@ def classify_calls(chunk_calls: list, imports: list) -> dict:
         # np        → numpy        (external)
         # get_logger → app.utils.logger (internal project)
         # Path      → pathlib      (stdlib)
-        
+
         alias_map = {}
         for imp in imports:
-            for module, alias in zip(imp["modules"], imp["aliases"]):
+            for module_info in import_modules:
+                module = module_info[1]
+                alias = module_info[2]
                 key = alias if alias else module
                 alias_map[key] = {
-                    "source": imp["source"],
+                    "source": imp[2],
                     "module": module
                 }
 
@@ -394,13 +420,7 @@ def classify_calls(chunk_calls: list, imports: list) -> dict:
         STDLIB = {"pathlib", "os", "sys", "json", "re", "math",
                 "collections", "itertools", "typing"}
 
-        result = {
-            "internal_calls": [],       # self.method() — same class
-            "cross_file_calls": [],     # imported from your own project
-            "external_lib_calls": [],   # third party libraries
-            "stdlib_calls": [],         # python standard library
-            "unresolved_calls": []      # couldn't classify
-        }
+        result = set()
 
         for call in chunk_calls:
             root = call.split(".")[0]   # faiss.IndexIDMap → faiss
@@ -408,72 +428,95 @@ def classify_calls(chunk_calls: list, imports: list) -> dict:
             # self.method() — internal to class
             if root == "self":
                 method_name = call.split(".")[1] if "." in call else call
-                result["internal_calls"].append({
-                    "call": call,
-                    "resolves_to": method_name
-                })
+                result.add((
+                    chunk_id,                   # associate call with its chunk
+                    "internal_method_call",     # type of call
+                    call,                       # full call expression
+                    "class",                    # source is the class itself
+                    method_name,                # resolves to method name
+                    None                        # no library since it's internal
+                ))
 
             # aliased or direct external lib
             elif root in EXTERNAL_LIBS:
-                result["external_lib_calls"].append({
-                    "call": call,
-                    "library": alias_map.get(root, {}).get("source", root)
-                })
+                result.add((
+                    chunk_id,
+                    "external_lib_call",
+                    call,
+                    alias_map.get(root, {}).get("source", root),
+                    root,
+                    alias_map.get(root, {}).get("source", root)
+                ))
 
             # stdlib
             elif root in STDLIB:
-                result["stdlib_calls"].append({
-                    "call": call,
-                    "library": alias_map.get(root, {}).get("source", root)
-                })
+                result.add((
+                    chunk_id,
+                    "stdlib_call",
+                    call,
+                    alias_map.get(root, {}).get("source", root),
+                    root,
+                    alias_map.get(root, {}).get("source", root)
+                ))
 
             # came from an import → could be cross-file project code
             elif root in alias_map:
                 source = alias_map[root]["source"]
                 # if source has your project namespace → cross-file
                 if source.startswith("app.") or '/' in source:
-                    result["cross_file_calls"].append({
-                        "call": call,
-                        "source_module": source,
-                        "resolves_to": alias_map[root]["module"]
-                    })
+                    result.add((
+                        chunk_id,
+                        "cross_file_call",
+                        call,
+                        source,
+                        alias_map[root]["module"],
+                        None
+                    ))
                 else:
-                    result["external_lib_calls"].append({
-                        "call": call,
-                        "library": source
-                    })
+                    result.add((
+                        chunk_id,
+                        "external_lib_call",
+                        call,
+                        source,
+                        None,
+                        source
+                    ))
 
             else:
-                result["unresolved_calls"].append({
-                    "call": call
-                })
+                result.add((
+                    chunk_id,
+                    "unresolved_call",
+                    call,
+                    None,
+                    None,
+                    None
+                ))
 
-        return result
+        return list(result)
 
 if __name__ == "__main__":
     # file = r"D:\Project\Inventory-App\backend\controller\customer.js"
     # language = "JavaScript"
+
     file = r"D:\Project\AI-Powered Code Reviewer\Backend\app\utils\faiss.py"
     language = "Python"
+
     with open(file, "r") as f:
         code = f.read()
 
-    print("Clean Code:")
-
-    chunker = Chunker(code, language, "faiss.py")
+    chunker = Chunker(code, language, "faiss.py", uuid7())
     classes, imports, chunks = chunker.chunk_code()
-    import_statements = []
-    for import_statement in imports:
-        import_statement = normalize(import_statement, 'python')
-        import_statements.append(import_statement.to_dict())
-        print(f"Import: {json.dumps(import_statement.to_dict(), indent=2)}")
-    results = []
+
+    print("Imports:")
+    print(json.dumps(imports, indent=2))
+
     for cls in classes:
         print(f"Class: {cls['name']}")
+
         for chunk in cls['chunks']:
             print(f"  Method: {chunk['name']}")
             print(f"    Complexity: {chunk['complexity']}")
-            chunk['calls'] = classify_calls(chunk['calls'], import_statements)
+
             for call_type, calls in chunk['calls'].items():
                 for call in calls:
                     print(f"    {call_type}: {call['call'], }")

@@ -1,6 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional
+import uuid
+from uuid6 import uuid7
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -31,23 +33,32 @@ class Token:
 class NormalizedImport:
     source: str
     type: str
-    modules: list[str]
-    aliases: list[str]
+    import_modules: List[dict]
+    file_id: Optional[str] = None
+    id: uuid.UUID = field(default_factory=lambda: uuid7())
 
     def to_dict(self) -> dict:
-        return {
-            "source": self.source,
-            "type": self.type,
-            "modules": self.modules,
-            "aliases": self.aliases
-        }
+        modules_info = []
+        for mod in self.import_modules:
+            modules_info.append((
+                mod.get("import_id"),
+                mod.get("module"),
+                mod.get("alias")
+            ))
+        return (
+            self.id,
+            self.file_id,
+            self.source,
+            self.type
+        ), modules_info
 
     def __repr__(self) -> str:
         return (
             f"NormalizedImport(\n"
             f"  source  = {self.source!r}\n"
             f"  type    = {self.type!r}\n"
-            f"  modules = {self.modules!r}\n"
+            f"  modules = {self.import_modules!r}\n"
+            f"  file_id = {self.file_id!r}\n"
             f")"
         )
 
@@ -299,14 +310,8 @@ def _read_specifier_list(stream: TokenStream):
 #  LANGUAGE PARSERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _parse_python(tokens: List[Token], language: str) -> NormalizedImport:
-    """
-    import os
-    import os as sys_os
-    from collections import defaultdict as dd
-    from . import something          (relative)
-    from typing import List, Optional
-    """
+def _parse_python(tokens: List[Token], language: str, file_id: str) -> NormalizedImport:
+
     stream = TokenStream(tokens)
     first  = stream.consume()
 
@@ -330,15 +335,17 @@ def _parse_python(tokens: List[Token], language: str) -> NormalizedImport:
     mod_tok = stream.consume()
     module  = mod_tok.value if mod_tok else ""
     alias   = _maybe_alias(stream)
+    __import__id = uuid7()
     return NormalizedImport(
         source  = module,
         type    = language,
-        modules = [module],
-        aliases = [alias] if alias else [None]
+        import_modules=[{"module": module, "alias": alias, "import_id": __import__id}],
+        file_id = file_id,
+        id = __import__id
     )
 
 
-def _parse_javascript(tokens: List[Token], language: str) -> NormalizedImport:
+def _parse_javascript(tokens: List[Token], language: str, file_id: str) -> NormalizedImport:
     """
     import React, { useEffect as effect } from 'react'
     import * as ns from 'mod'
@@ -350,6 +357,8 @@ def _parse_javascript(tokens: List[Token], language: str) -> NormalizedImport:
     stream = TokenStream(tokens)
     first  = stream.consume()
 
+    __import__id = uuid7()
+
     # ── @import UIKit ─────────────────────────────────────────────────────────
     if first and first.value == "@import":
         stream.skip_type("SEMICOLON")
@@ -358,8 +367,9 @@ def _parse_javascript(tokens: List[Token], language: str) -> NormalizedImport:
         return NormalizedImport(
             source  = mod,
             type    = language,
-            modules = [mod],
-            aliases = [None]
+            import_modules=[{"import_id": __import__id, "module": mod, "alias": None}],
+            file_id = file_id,
+            id = __import__id
         )
 
     # ── const binding = require('source') ─────────────────────────────────────
@@ -378,8 +388,9 @@ def _parse_javascript(tokens: List[Token], language: str) -> NormalizedImport:
         return NormalizedImport(
             source  = source,
             type    = language,
-            modules = [source],
-            aliases = [binding] if binding else [None],
+            import_modules=[{"module": source, "alias": binding, "import_id": __import__id} if binding else {"module": source, "alias": None, "import_id": __import__id}],
+            file_id = file_id,
+            id = __import__id
         )
 
     # ── import [type] … from 'source'   /   export { … } from 'source' ───────
@@ -396,20 +407,20 @@ def _parse_javascript(tokens: List[Token], language: str) -> NormalizedImport:
         # Advance main stream past specifiers + 'from'
         for _ in range(from_offset + 1):
             stream.consume()
-
+        import_modules = [{"module": mod, "alias": alias, "import_id": __import__id} for mod, alias in zip(modules, aliases)]
         source_tok = stream.consume()
         source     = source_tok.value if source_tok else ""
     else:
         # No 'from' — bare  import 'side-effect-module'
         source_tok = stream.consume()
         source     = source_tok.value if source_tok else ""
-        modules    = []
-        aliases    = []
+        import_modules = [{"module": source, "alias": None, "import_id": __import__id}]
+        file_id    = file_id
 
-    return NormalizedImport(source=source, type=language, modules=modules, aliases=aliases)
+    return NormalizedImport(source=source, type=language, import_modules=import_modules, file_id=file_id)
 
 
-def _parse_java(tokens: List[Token], language: str) -> NormalizedImport:
+def _parse_java(tokens: List[Token], language: str, file_id: str) -> NormalizedImport:
     """
     import java.util.List;
     import static java.lang.Math.PI;
@@ -420,6 +431,7 @@ def _parse_java(tokens: List[Token], language: str) -> NormalizedImport:
 
     # Collect dotted path  →  IDENTIFIER (DOT IDENTIFIER)*
     parts: List[str] = []
+    __import__id = uuid7()
     while stream.peek() and stream.peek().type in ("IDENTIFIER", "DOT", "SEMICOLON"):
         tok = stream.consume()
         if tok.type == "IDENTIFIER":
@@ -433,12 +445,13 @@ def _parse_java(tokens: List[Token], language: str) -> NormalizedImport:
     return NormalizedImport(
         source  = source,
         type    = language,
-        modules = [module],
-        aliases = [None]
+        import_modules=[{"module": module, "alias": None, "import_id": __import__id}] if module else [],
+        file_id = file_id,
+        id = __import__id
     )
 
 
-def _parse_c(tokens: List[Token], language: str) -> NormalizedImport:
+def _parse_c(tokens: List[Token], language: str, file_id: str) -> NormalizedImport:
     """
     #include <iostream>
     #include "myheader.h"
@@ -448,24 +461,26 @@ def _parse_c(tokens: List[Token], language: str) -> NormalizedImport:
     stream.consume()                        # eat '#include' / '#import'
     source_tok = stream.consume()
     source     = source_tok.value if source_tok else ""
+    __import__id = uuid7()
 
     return NormalizedImport(
         source  = source,
         type    = language,
-        modules = source.split("/")[-1:],   # module is the filename
-        aliases = [None]
+        import_modules=[{"module": module, "alias": None, "import_id": __import__id} for module in source.split("/")[-1:]],   # module is the filename
+        file_id = file_id,
+        id = __import__id
     )
 
 
 # ── Dispatch table (O(1) lookup) ──────────────────────────────────────────────
 
 _PARSERS = {
-    "python":     _parse_python,
-    "javascript": _parse_javascript,
-    "typescript": _parse_javascript,
-    "java":       _parse_java,
-    "c":          _parse_c,
-    "cpp":        _parse_c,
+    "Python":     _parse_python,
+    "JavaScript": _parse_javascript,
+    "TypeScript": _parse_javascript,
+    "Java":       _parse_java,
+    "C":          _parse_c,
+    "Cpp":        _parse_c,
 }
 
 
@@ -478,25 +493,15 @@ def tokenize(code: str, language: str) -> List[Token]:
     return ImportTokenizer(code, language).tokenize()
 
 
-def normalize(code: str, language: str) -> NormalizedImport:
-    """
-    Full pipeline: source code → tokens → NormalizedImport.
+def normalize(code: str, language: str, file_id: Optional[str] = None) -> NormalizedImport:
 
-    Args:
-        code:     A single import/include/require statement.
-        language: One of python | javascript | typescript | java | c | cpp.
-
-    Returns:
-        NormalizedImport with source, type, and modules list.
-    """
-    lang   = language.lower()
-    tokens = ImportTokenizer(code, lang).tokenize()
-    parser = _PARSERS.get(lang)
+    tokens = ImportTokenizer(code, language).tokenize()
+    parser = _PARSERS.get(language)
 
     if parser is None:
         raise ValueError(f"Unsupported language: {language!r}")
 
-    return parser(tokens, lang)
+    return parser(tokens, language, file_id).to_dict()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

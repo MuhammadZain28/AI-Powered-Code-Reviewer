@@ -3,7 +3,7 @@ from app.utils.logger import get_logger
 
 
 class File:
-    def __init__(self, id: int, project_id: int, path: str, language: str, hash: str):
+    def __init__(self, id: int = None, project_id: int = None, path: str = None, language: str = None, hash: str = None):
         self.id = id
         self.project_id = project_id
         self.path = path
@@ -63,3 +63,12 @@ class File:
         except Exception as e:
             self.__logger.error(f"Error fetching project files for project {project_id}: {str(e)}")
             return []
+
+    async def save_all(self, data: list):
+        try:
+            await self.__file_manager.copy_table(data, ['id', 'project_id', 'path', 'language', 'hash'])
+            self.__logger.info(f"Bulk inserted {len(data)} files for project {self.project_id}")
+            return True
+        except Exception as e:
+            self.__logger.error(f"Error bulk inserting files for project {self.project_id}: {str(e)}")
+            return False

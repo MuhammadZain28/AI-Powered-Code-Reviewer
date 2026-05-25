@@ -3,7 +3,7 @@ from app.db_manager.call_manager import CallManager
 from app.utils.logger import get_logger
 from app.utils.chunker import classify_calls
 class Chunk:
-    def __init__(self, id: int, file_id: int, chunk_type: int, name: str, start_line: int, end_line: int, content: str, parameters: list = [], return_values: list = [], complexity: dict = {}, hash: str = "", docstring: str = "", calls: list = [], class_id: int = None):
+    def __init__(self, id: int = None, file_id: int = None, chunk_type: int = None, name: str = None, start_line: int = None, end_line: int = None, content: str = None, parameters: list = [], return_values: list = [], complexity: dict = {}, hash: str = "", docstring: str = "", calls: list = [], class_id: int = None):
         self.id = id
         self.file_id = file_id
         self.class_id = class_id
@@ -52,3 +52,6 @@ class Chunk:
         else:
             self.__logger.warning("Attempted to retrieve a chunk that does not exist in the database.")
             return None
+
+    async def save_all(self, data: list):
+        await self.__chunk_manager.copy_table(data, ['id', 'file_id', 'class_id', 'name', 'content', 'start_line', 'end_line', 'chunk_type', 'hash', 'docstring', 'parameters', 'return_values', 'complexity'])
