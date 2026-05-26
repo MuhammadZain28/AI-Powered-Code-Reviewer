@@ -59,13 +59,20 @@ class ParserService:
         chunks = chunker.chunk_code()
         if not chunks:
             self.__logger.warning(f"No chunks extracted from code in language {file_path}. Returning entire file as one chunk.")
-            return [{
-            'name': f"{file_path.split('/')[-1]}",
-            'content': code,
-            'start_line': 1,
-            'end_line': code.count('\n') + 1,
-            'type': 'file'
-            }]
+            return [(
+            uuid7(),
+            id,
+            None,
+            f"{file_path.split('/')[-1]}",
+            code,
+            1,
+            code.count('\n') + 1,
+            'file',
+            self.file_hash(code),
+            None,
+            None,
+            None
+            )]
         return chunks
 
     def parse_project(self, project_id) -> dict:

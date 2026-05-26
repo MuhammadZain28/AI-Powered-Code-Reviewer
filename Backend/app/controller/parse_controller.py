@@ -1,27 +1,21 @@
-from app.models.imports import Import
-from app.models.files import File
 from app.models.chunks import Chunk
-from app.models.classes import Class
-from app.models.calls import Call
 from app.services.parser_service import ParserService
 from app.db_manager.database import Database
-# from app.services.embedding_service import EmbeddingService
+from app.services.embedding_service import EmbeddingService
 from app.utils.logger import get_logger
 from app.utils.faiss import FaissIndex
-import json
 import time
 
 
 class ParseController:
     def __init__(self, repo_path: str):
         self.parser_service = ParserService(repo_path)
-        # self.embedding_service = EmbeddingService()
+        self.embedding_service = EmbeddingService()
         self.faiss_index = FaissIndex(dimension=384)
         self.__logger = get_logger("ParseController")
 
     async def parse_project(self, project_id: str) -> dict:
         self.__logger.info(f"Starting to parse project {project_id}")
-
         start_time = time.time()
 
         parsed_data = self.parser_service.parse_project(project_id=project_id)
@@ -44,7 +38,7 @@ class ParseController:
         self.__logger.info(f"Connected to database in {end_time - start_time:.2f} seconds. Starting to save data...")
 
         start_time = time.time()
-        # Save to database
+
         table_data = {
             'files': { 'data': files, 'columns': ['id', 'project_id', 'path', 'language', 'hash'] },
             'imports': { 'data': imports, 'columns': ['id', 'file_id', 'type', 'source'] },
@@ -57,14 +51,16 @@ class ParseController:
 
         await Database().copy_multiple_tables(table_data)
 
-        # Build FAISS index
-        # for chunk in chunks:
-        #     vector = self.embedding_service.model.encode(chunk['content'], convert_to_numpy=True)
-        #     self.faiss_index.add_vector(vector, chunk['id'])
-        # self.faiss_index.save_index()
+        ids, vectors = self.embedding_service.embed_chunks(chunks)
+
+        self.__logger.info(f"Processed Chunks with {len(vectors)} vectors and {len(ids)} ids.")
+
+        if len(vectors) == len(ids):
+            self.faiss_index.add_embeddings(vectors, ids)
 
         end_time = time.time()
         self.__logger.info(f"Finished parsing project {project_id} in {end_time - start_time:.2f} seconds")
+
         return {
             "files": len(files),
             "imports": len(imports),
@@ -74,6 +70,7 @@ class ParseController:
             "attributes": len(attributes),
             "import_modules": len(import_modules)
         }
+
     async def search_chunks(self, query: str, k: int = 5):
         query_vector = self.embedding_service.model.encode(query, convert_to_numpy=True)
         ids, scores = self.faiss_index.search(query_vector, k)

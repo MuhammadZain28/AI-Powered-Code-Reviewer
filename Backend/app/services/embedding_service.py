@@ -8,18 +8,21 @@ class EmbeddingService:
         self.model = SentenceTransformer(model_name)
         self.logger = get_logger("EmbeddingService")
 
-    def build_text(self, chunk: dict, language: str, file: str) -> str:
-        name = chunk.get("name", "")
-        code = chunk.get("code", "")
-        chunk_type = chunk.get("type", "")
+    def build_text(self, chunk: tuple) -> str:
+        name = chunk[3]
+        code = chunk[4]
+        chunk_type = chunk[7]
+        docstring = chunk[9] if chunk[9] else f"This implements a {chunk_type} {name}."
+        parameters = chunk[10]
+        return_values = chunk[11]
 
         return f"""
 TYPE: {chunk_type}
-LANGUAGE: {language}
-FILE: {file}
 NAME: {name}
+PARAMETERS: {parameters}
+RETURN VALUES: {return_values}
 TASK SUMMARY:
-This code implements a {chunk_type} {name} in {language}.
+{docstring}.
 CODE:
 {code}
 """
@@ -33,20 +36,12 @@ CODE:
             self.logger.error(f"Error embedding chunk: {e}")
             return None
 
-    def embed_chunks(self, chunks: list, language: str, file: str) -> list:
-        embeddings = []
+    def embed_chunks(self, chunks: list) -> list:
+        vectors = []
+        ids = []
         for chunk in chunks:
-            embedding = self.embed_chunk(chunk, language, file)
+            embedding = self.embed_chunk(chunk)
             if embedding is not None:
-                embeddings.append({
-                    'meta': {
-                        'type': chunk.get('type'),
-                        'name': chunk.get('name'),
-                        'language': language,
-                        'content': chunk.get('content'),
-                        'start_line': chunk.get('start_line'),
-                        'end_line': chunk.get('end_line')
-                    },
-                    'vector': embedding
-                })
-        return embeddings
+                ids.append(chunk[0])
+                vectors.append(embedding)
+        return ids, vectors
