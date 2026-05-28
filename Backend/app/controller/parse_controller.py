@@ -16,6 +16,7 @@ class ParseController:
 
     async def parse_project(self, project_id: str) -> dict:
         self.__logger.info(f"Starting to parse project {project_id}")
+
         start_time = time.time()
 
         parsed_data = self.parser_service.parse_project(project_id=project_id)
@@ -28,6 +29,7 @@ class ParseController:
         import_modules = parsed_data['import_modules']
 
         end_time = time.time()
+
         self.__logger.info(f"Finished parsing project {project_id} in {end_time - start_time:.2f} seconds. Starting to save to database...")
 
         start_time = time.time()
@@ -35,6 +37,7 @@ class ParseController:
         await Database().connect()
 
         end_time = time.time()
+
         self.__logger.info(f"Connected to database in {end_time - start_time:.2f} seconds. Starting to save data...")
 
         start_time = time.time()
@@ -59,6 +62,7 @@ class ParseController:
             self.faiss_index.add_embeddings(vectors, ids)
 
         end_time = time.time()
+
         self.__logger.info(f"Finished parsing project {project_id} in {end_time - start_time:.2f} seconds")
 
         return {
