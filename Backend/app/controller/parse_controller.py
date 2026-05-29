@@ -100,5 +100,5 @@ class ParseController:
 
 if __name__ == "__main__":
     import asyncio
-    controller = ParseController(repo_path="D:\\Project\\Test")
+    controller = ParseController(repo_path="D:\\Project\\NUCES")
     asyncio.run(controller.parse_project(project_id="21ccbbaa-049d-434e-bbc9-65f2e89660fa"))
