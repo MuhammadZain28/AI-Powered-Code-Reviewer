@@ -85,13 +85,7 @@ class Database:
             self.logger.warning("Database connection not established. Attempting to connect...")
             self.pool = await asyncpg.create_pool(dsn=self.dsn)
         async with self.pool.acquire() as connection:
-            try:
-                await connection.copy_records_to_table(table_name, records=data, columns=columns)
-
-            except Exception as e:
-                self.logger.error(f"Error copying data to table: {e}")
-                raise
-
+            await connection.copy_records_to_table(table_name, records=data, columns=columns)
 
     async def copy_multiple_tables(self, table_data: dict):
 
@@ -110,3 +104,16 @@ class Database:
                         records=data["data"],
                         columns=data["columns"]
                     )
+        return True
+
+    async def fetch_values(self, query: str, *args):
+        if not self.pool:
+            self.logger.warning("Database connection not established. Attempting to connect...")
+            self.pool = await asyncpg.create_pool(dsn=self.dsn)
+        async with self.pool.acquire() as connection:
+            try:
+                return await connection.fetchval(query, *args)
+
+            except Exception as e:
+                self.logger.error(f"Error fetching value: {e}")
+                raise

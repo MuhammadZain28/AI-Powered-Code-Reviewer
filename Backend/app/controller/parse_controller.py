@@ -34,7 +34,7 @@ class ParseController:
 
         start_time = time.time()
 
-        await Database().connect()
+        # await Database().connect()
 
         end_time = time.time()
 
@@ -48,22 +48,50 @@ class ParseController:
             'import_modules': { 'data': import_modules, 'columns': ['import_id', 'module', 'alias'] },
             'classes': { 'data': classes, 'columns': ['id', 'file_id', 'name', 'start_line', 'end_line', 'docstring', 'inheritance'] },
             'class_attributes': { 'data': attributes, 'columns': ['class_id', 'name', 'attribute_type', 'default_value', 'is_static'] },
-            'chunks': { 'data': chunks, 'columns': ['id', 'file_id', 'class_id', 'name', 'content', 'start_line', 'end_line', 'chunk_type', 'hash', 'docstring', 'parameters', 'return_values'] },
-            'calls': { 'data': calls, 'columns': ['caller_id', 'call_type', 'function_name', 'source', 'library', 'resolve_to'] }
+            'chunks': { 'data': chunks, 'columns': ['id', 'file_id', 'class_id', 'class_name', 'name', 'content', 'start_line', 'end_line', 'chunk_type', 'hash', 'docstring', 'parameters', 'return_values'] },
+            'calls': { 'data': calls, 'columns': ['caller_id', 'call_type', 'function_name', 'source', 'resolve_to', 'library'] }
         }
 
         await Database().copy_multiple_tables(table_data)
 
-        ids, vectors = self.embedding_service.embed_chunks(chunks)
+        end_time = time.time()
+        
+        ids = Database().fetch_values()
+        vectors = self.embedding_service.embed_chunks(chunks)
 
         self.__logger.info(f"Processed Chunks with {len(vectors)} vectors and {len(ids)} ids.")
 
         if len(vectors) == len(ids):
             self.faiss_index.add_embeddings(vectors, ids)
 
-        end_time = time.time()
 
         self.__logger.info(f"Finished parsing project {project_id} in {end_time - start_time:.2f} seconds")
+
+        embedding_data = {}
+        chunk_calls = {}
+        for file in files:
+            embedding_data[file[0]] = {
+                'chunks': []
+            }
+
+        for chunk in chunks:
+            embedding_data[chunk[1]]['chunks'].append({
+                'class': chunk[3],
+                'name': chunk[4],
+                'content': chunk[5],
+                'type': chunk[8],
+                'docstring': chunk[10],
+                'parameters': chunk[11],
+                'return_values': chunk[12]
+            })
+            chunk_calls[chunk[0]] = {
+                'calls': [],
+                'libraries': []
+            }
+
+        for call in calls:
+            chunk_calls[call[0]]['calls'].append(call[2])
+            chunk_calls[call[0]]['libraries'].append(call[5])
 
         return {
             "files": len(files),

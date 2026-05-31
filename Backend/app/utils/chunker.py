@@ -47,6 +47,7 @@ class Chunker():
         self.lines = source_code.splitlines()
         self.__logger = get_logger("Chunker")
         self.current_class = None
+        self.class_name = None
 
     def get_parser(self):
         parser = Parser()
@@ -326,10 +327,11 @@ class Chunker():
         return (self.class_chunk, self.imports, self.chunks, self.calls, self.attributes, self.imports_modules)
 
     def build_class(self, id, node, docstring=None):
+        self.class_name = self.get_node_name(node)
         cls = (
             id,                             # unique identifier for the class
             self.file_id,                   # associate class with its file
-            self.get_node_name(node),       # human-readable class name
+            self.current_class,       # human-readable class name
             node.start_point[0] + 1,        # line numbers are 0-indexed in tree-sitter
             node.end_point[0] + 1,          # end line of the class
             docstring,                      # docstring for the class
@@ -343,6 +345,7 @@ class Chunker():
             id,                             # unique identifier for the chunk
             self.file_id,                   # associate chunk with its file
             self.current_class,             # associate chunk with its class (if any)
+            self.class_name,                # associate class name
             self.get_node_name(node),       # human-readable name (function name, method name, etc.)
             code,                           # actual code content of the chunk
             node.start_point[0] + 1,        # line numbers are 0-indexed in tree-sitter

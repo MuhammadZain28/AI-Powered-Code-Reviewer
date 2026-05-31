@@ -1,7 +1,5 @@
-from app.db_manager.chunks_manager import ChunkManager
-from app.db_manager.call_manager import CallManager
+from app.db_manager.database import Database
 from app.utils.logger import get_logger
-from app.utils.chunker import classify_calls
 class Chunk:
     def __init__(self, id: int = None, file_id: int = None, chunk_type: int = None, name: str = None, start_line: int = None, end_line: int = None, content: str = None, parameters: list = [], return_values: list = [], complexity: dict = {}, hash: str = "", docstring: str = "", calls: list = [], class_id: int = None):
         self.id = id
@@ -18,40 +16,12 @@ class Chunk:
         self.hash = hash
         self.docstring = docstring
         self.calls = calls
-        self.__chunk_manager = ChunkManager()
-        self.__call_manager = CallManager()
         self.__logger = get_logger("Chunk")
 
-    async def save(self, imports: list = None):
-        if self.id is None:
-            result = await self.__chunk_manager.insert_chunk(self.file_id, self.chunk_type, self.name, self.start_line, self.end_line, self.content, self.parameters, self.return_values, self.complexity, self.hash, self.docstring, self.class_id)
-            self.id = result['id']
-
-            self.calls = classify_calls(self.calls, imports)
-
-            for call_types, calls in self.calls.items():
-                for call in calls:
-                    await self.__call_manager.insert_call(caller_id=self.id, function_name=call['call'], library=call.get('library'), call_type=call_types, resolve_to=call.get('resolves_to'))
-
-            self.__logger.info(f"Inserted new chunk with ID {self.id} for file {self.file_id}")
-            return True
-        else:
-            self.__logger.info(f"Updated embedding ID for chunk with ID {self.id} in file {self.file_id}")
-            return True
-
-    async def fetch_file_chunks(self, file_id: int):
-        if self.file_id is not None:
-            return await self.__chunk_manager.get_chunks_by_file_id(file_id)
-        else:
-            self.__logger.warning("Attempted to retrieve chunks for a file that does not exist in the database.")
-            return []
-
-    async def fetch(self):
-        if self.id is not None:
-            return await self.__chunk_manager.get_chunks(self.id)
-        else:
-            self.__logger.warning("Attempted to retrieve a chunk that does not exist in the database.")
-            return None
-
-    async def save_all(self, data: list):
-        await self.__chunk_manager.copy_table(data, ['id', 'file_id', 'class_id', 'name', 'content', 'start_line', 'end_line', 'chunk_type', 'hash', 'docstring', 'parameters', 'return_values', 'complexity'])
+    async def fetch_embedding_id(self):
+        db = Database()
+        query = "SELECT array_agg(embedding_id) FROM chunks"
+        result = await db.fetch_values(query)
+        if result:
+            return result
+        return None

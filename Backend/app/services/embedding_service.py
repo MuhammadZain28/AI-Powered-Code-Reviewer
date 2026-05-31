@@ -8,27 +8,36 @@ class EmbeddingService:
         self.model = SentenceTransformer(model_name)
         self.logger = get_logger("EmbeddingService")
 
-    def build_text(self, chunk: tuple) -> str:
-        name = chunk[3]
-        code = chunk[4]
-        chunk_type = chunk[7]
-        docstring = chunk[9] if chunk[9] else f"{name}."
-        parameters = chunk[10]
-        return_values = chunk[11]
-
+    def build_text(self, chunk: dict, function_calls: dict) -> str:
+        purpose = chunk['docstring'] if chunk['docstring'] else chunk['name']
         return f"""
-TYPE: {chunk_type}
-NAME: {name}
-PARAMETERS: {parameters}
-FUNCTION CALLS: {code}
-RETURN VALUES: {return_values}
-TASK SUMMARY:
-{docstring}.
+NAME: {chunk['name']}
+
+PURPOSE:
+{chunk['docstring']}.
+
+CLASS NAME: {chunk['class_name']}
+
+IMPORTS USED:
+{'\n'.join(function_calls.get(chunk['id'], {}).get('libraries', []))}
+
+PARAMETERS:
+{'\n'.join(chunk['parameters'])}
+
+FUNCTION CALLS:
+{'\n'.join(function_calls.get(chunk['id'], {}).get('calls', []))}
+
+RETURN VALUES:
+{'\n'.join(chunk['return_values'])}
+
 CODE:
-{code}
+{chunk['content']}
 """
-    def embed_chunk(self, chunk: tuple) -> np.ndarray:
-        text = self.build_text(chunk)
+    def embed_chunk(self, chunk_data: dict, function_calls: dict) -> np.ndarray:
+        chunk = chunk_data['chunk']
+        path = chunk_data['path']
+        language = chunk_data['language']
+        text = self.build_text(chunk, function_calls)
         try:
             embedding = self.model.encode(text)
             return embedding
@@ -37,12 +46,31 @@ CODE:
             self.logger.error(f"Error embedding chunk: {e}")
             return None
 
-    def embed_chunks(self, chunks: list) -> list:
+    def embed_chunks(self, chunks: dict, function_calls: dict) -> list:
         vectors = []
         ids = []
-        for chunk in chunks:
-            embedding = self.embed_chunk(chunk)
+        for file_id, file_chunks in chunks.items():
+            embedding = self.embed_chunk(file_chunks, function_calls)
             if embedding is not None:
-                ids.append(chunk[0])
+                ids.append(file_chunks['chunk']['id'])
                 vectors.append(embedding)
         return ids, vectors
+
+if __name__ == "__main__":
+    embedding_service = EmbeddingService()
+    sample_chunk = {
+        'chunk': {
+            'id': 1,
+            'name': 'example_function',
+            'class_name': 'ExampleClass',
+            'parameters': ['param1', 'param2'],
+            'return_values': ['return1'],
+            'docstring': 'This is an example function.',
+            'content': 'def example_function(param1, param2):\n    return param1 + param2'
+        },
+        'path': '/path/to/file.py',
+        'language': 'python'
+    }
+    function_calls = {1: {'calls': ['call1', 'call2'], 'libraries': []}}
+    text = embedding_service.build_text(sample_chunk['chunk'], function_calls)
+    print(text)
