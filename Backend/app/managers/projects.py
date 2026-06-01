@@ -1,5 +1,5 @@
 import os
-from app.db_manager.database import Database
+from app.managers.database import Database
 from app.utils.logger import get_logger
 
 class Project:

@@ -1,4 +1,4 @@
-from app.models.projects import Project
+from app.managers.projects import Project
 
 class ProjectController:
     def __init__(self):

@@ -1,6 +1,6 @@
-from app.models.chunks import Chunk
+from app.managers.chunks import Chunk
 from app.services.parser_service import ParserService
-from app.db_manager.database import Database
+from app.managers.database import Database
 from app.services.embedding_service import EmbeddingService
 from app.utils.logger import get_logger
 from app.utils.faiss import FaissIndex
@@ -20,6 +20,7 @@ class ParseController:
         start_time = time.time()
 
         parsed_data = self.parser_service.parse_project(project_id=project_id)
+
         files = parsed_data['files']
         imports = parsed_data['imports']
         classes = parsed_data['classes']
@@ -34,7 +35,7 @@ class ParseController:
 
         start_time = time.time()
 
-        # await Database().connect()
+        await Database().connect()
 
         end_time = time.time()
 
@@ -48,24 +49,20 @@ class ParseController:
             'import_modules': { 'data': import_modules, 'columns': ['import_id', 'module', 'alias'] },
             'classes': { 'data': classes, 'columns': ['id', 'file_id', 'name', 'start_line', 'end_line', 'docstring', 'inheritance'] },
             'class_attributes': { 'data': attributes, 'columns': ['class_id', 'name', 'attribute_type', 'default_value', 'is_static'] },
-            'chunks': { 'data': chunks, 'columns': ['id', 'file_id', 'class_id', 'class_name', 'name', 'content', 'start_line', 'end_line', 'chunk_type', 'hash', 'docstring', 'parameters', 'return_values'] },
+            'chunks': { 'data': chunks, 'columns': ['id', 'file_id', 'class_id', 'class_name', 'name', 'content', 'start_line', 'end_line', 'chunk_type', 'hash', 'docstring', 'parameters', 'return_values', 'complexity'] },
             'calls': { 'data': calls, 'columns': ['caller_id', 'call_type', 'function_name', 'source', 'resolve_to', 'library'] }
         }
+
 
         await Database().copy_multiple_tables(table_data)
 
         end_time = time.time()
-        
-        ids = Database().fetch_values()
-        vectors = self.embedding_service.embed_chunks(chunks)
 
-        self.__logger.info(f"Processed Chunks with {len(vectors)} vectors and {len(ids)} ids.")
+        self.__logger.info(f"Finished saving project {project_id} in {end_time - start_time:.2f} seconds")
 
-        if len(vectors) == len(ids):
-            self.faiss_index.add_embeddings(vectors, ids)
+        start_time = time.time()
 
-
-        self.__logger.info(f"Finished parsing project {project_id} in {end_time - start_time:.2f} seconds")
+        ids = await Chunk().fetch_embedding_id(project_id)
 
         embedding_data = {}
         chunk_calls = {}
@@ -76,6 +73,7 @@ class ParseController:
 
         for chunk in chunks:
             embedding_data[chunk[1]]['chunks'].append({
+                'id': chunk[0],
                 'class': chunk[3],
                 'name': chunk[4],
                 'content': chunk[5],
@@ -85,13 +83,28 @@ class ParseController:
                 'return_values': chunk[12]
             })
             chunk_calls[chunk[0]] = {
-                'calls': [],
-                'libraries': []
+                'calls': set(),
+                'libraries': set()
             }
 
         for call in calls:
-            chunk_calls[call[0]]['calls'].append(call[2])
-            chunk_calls[call[0]]['libraries'].append(call[5])
+            chunk_calls[call[0]]['calls'].add(call[2])
+            if call[5] is not None:
+                chunk_calls[call[0]]['libraries'].add(call[5])
+
+
+        vectors = self.embedding_service.embed_chunks(embedding_data, chunk_calls)
+
+        self.__logger.info(f"Processed Chunks with {len(vectors)} vectors and {len(ids)} ids.")
+
+        print(f"Vectors: {len(vectors)}, IDs: {len(ids)}")
+
+        if len(vectors) == len(ids):
+            self.faiss_index.add_embeddings(vectors, ids)
+
+        end_time = time.time()
+
+        self.__logger.info(f"Finished embedding and saving to Faiss index for project {project_id} in {end_time - start_time:.2f} seconds")
 
         return {
             "files": len(files),
@@ -106,20 +119,7 @@ class ParseController:
     async def search_chunks(self, query: str, k: int = 5):
         query_vector = self.embedding_service.model.encode(query, convert_to_numpy=True)
         ids, scores = self.faiss_index.search(query_vector, k)
-        results = []
-        for chunk_id, score in zip(ids, scores):
-            chunk = await Chunk(id=chunk_id, file_id=None, chunk_type="", name="", start_line=0, end_line=0, content="").fetch()
-            if chunk:
-                results.append({
-                    "id": chunk['id'],
-                    "file_id": chunk['file_id'],
-                    "chunk_type": chunk['chunk_type'],
-                    "name": chunk['name'],
-                    "start_line": chunk['start_line'],
-                    "end_line": chunk['end_line'],
-                    "content": chunk['content'],
-                    "score": float(score)
-                })
+        results = await Chunk().fetch_chunk_by_id(ids, scores)
         return results
 
     def load_faiss_index(self):
@@ -128,5 +128,5 @@ class ParseController:
 
 if __name__ == "__main__":
     import asyncio
-    controller = ParseController(repo_path="D:\\Project\\NUCES")
+    controller = ParseController(repo_path="D:\\Project\\Test")
     asyncio.run(controller.parse_project(project_id="21ccbbaa-049d-434e-bbc9-65f2e89660fa"))

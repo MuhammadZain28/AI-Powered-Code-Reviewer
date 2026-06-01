@@ -88,10 +88,6 @@ class Database:
             await connection.copy_records_to_table(table_name, records=data, columns=columns)
 
     async def copy_multiple_tables(self, table_data: dict):
-
-        if not self.pool:
-            self.pool = await asyncpg.create_pool(dsn=self.dsn)
-
         async with self.pool.acquire() as conn:
             async with conn.transaction():
 
@@ -104,6 +100,7 @@ class Database:
                         records=data["data"],
                         columns=data["columns"]
                     )
+
         return True
 
     async def fetch_values(self, query: str, *args):

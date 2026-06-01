@@ -1,7 +1,8 @@
+import asyncio
 import os
-import re
 import hashlib
 from app.utils.logger import get_logger
+from app.managers.files import File
 from app.utils.chunker import Chunker
 from uuid6 import uuid7
 
@@ -28,6 +29,16 @@ class ParserService:
                 if self.is_valid_extension(file):
                     file_path = os.path.join(root, file)
                     code_files.append(file_path)
+        return code_files
+
+    async def scan_existing_project(self, project_id: str) -> list:
+        files = await File(project_id=project_id).scan_project()
+        code_files = []
+        for file in files:
+            code = self.read_file(file['path'])
+            if self.file_hash(code) != file['hash']:
+                code_files.append(file['path'])
+
         return code_files
 
     def detect_language(self, file_path: str) -> str:
@@ -112,3 +123,9 @@ class ParserService:
             'attributes': project_attributes,
             'import_modules': project_import_modules
         }
+
+if __name__ == "__main__":
+    repo_path = "D:\\Project\\NUCES"
+    service = ParserService(repo_path)
+    parsed_data = asyncio.run(service.scan_existing_project(project_id="21ccbbaa-049d-434e-bbc9-65f2e89660fa"))
+    print(f"Parsed data: {parsed_data}")

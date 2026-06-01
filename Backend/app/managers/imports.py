@@ -1,4 +1,4 @@
-from app.db_manager.import_manager import ImportManager
+from app.managers.database import Database
 from app.utils.tokenizer import normalize
 
 class Import:
@@ -11,7 +11,6 @@ class Import:
         self.modules = modules
         self.aliases = aliases
         self.raw_import = import_statement
-        self.__import_manager = ImportManager()
 
     async def save(self):
 

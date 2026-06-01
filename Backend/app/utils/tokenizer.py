@@ -314,7 +314,7 @@ def _parse_python(tokens: List[Token], language: str, file_id: str) -> Normalize
 
     stream = TokenStream(tokens)
     first  = stream.consume()
-
+    __import__id = uuid7()
     # ── from X import Y [as Z], … ─────────────────────────────────────────────
     if first and first.value == "from":
         # source may be dotted  e.g.  from os.path  →  IDENTIFIER DOT IDENTIFIER
@@ -329,13 +329,13 @@ def _parse_python(tokens: List[Token], language: str, file_id: str) -> Normalize
         stream.consume_if_value("import")   # eat 'import'
 
         modules, aliases = _read_specifier_list(stream)
-        return NormalizedImport(source=source, type=language, modules=modules, aliases=aliases)
+        return NormalizedImport(source=source, type=language, import_modules=[{"module": mod, "alias": alias, "import_id": __import__id} for mod, alias in zip(modules, aliases)], file_id=file_id, id=__import__id)
 
     # ── import X [as Z] ───────────────────────────────────────────────────────
     mod_tok = stream.consume()
     module  = mod_tok.value if mod_tok else ""
     alias   = _maybe_alias(stream)
-    __import__id = uuid7()
+
     return NormalizedImport(
         source  = module,
         type    = language,
@@ -367,7 +367,7 @@ def _parse_javascript(tokens: List[Token], language: str, file_id: str) -> Norma
         return NormalizedImport(
             source  = mod,
             type    = language,
-            import_modules=[{"import_id": __import__id, "module": mod, "alias": None}],
+            import_modules=[{"module": mod, "alias": None, "import_id": __import__id}],
             file_id = file_id,
             id = __import__id
         )
@@ -417,7 +417,7 @@ def _parse_javascript(tokens: List[Token], language: str, file_id: str) -> Norma
         import_modules = [{"module": source, "alias": None, "import_id": __import__id}]
         file_id    = file_id
 
-    return NormalizedImport(source=source, type=language, import_modules=import_modules, file_id=file_id)
+    return NormalizedImport(source=source, type=language, import_modules=import_modules, file_id=file_id, id=__import__id)
 
 
 def _parse_java(tokens: List[Token], language: str, file_id: str) -> NormalizedImport:

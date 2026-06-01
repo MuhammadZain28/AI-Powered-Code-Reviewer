@@ -80,3 +80,5 @@ Thumbs.db
 coverage/
 htmlcov/
 .cache/
+
+models

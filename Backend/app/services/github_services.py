@@ -2,6 +2,7 @@ import os
 import hashlib
 from git import Repo
 from app.utils.logger import get_logger
+import subprocess
 
 BASE_PATH = "backend/data/repos"
 class GitHubService:
@@ -30,3 +31,20 @@ class GitHubService:
         except Exception as e:
             self.logger.error(f"Error occurred while cloning repository: {e}")
             raise
+
+    def get_last_commit_files(self):
+        result = subprocess.run(
+            ["git", "-C", self.repo_url, "show", "--name-only", "--pretty=", "HEAD"],
+            capture_output=True,
+            text=True
+        )
+        files = result.stdout.strip().split("\n")
+        return [f for f in files if f]
+
+
+if __name__ == "__main__":
+    repo_url = "D:\\Project\\NUCES"
+    service = GitHubService(repo_url)
+    files = service.get_last_commit_files()
+    for f in files:
+        print(f"files: {f}")

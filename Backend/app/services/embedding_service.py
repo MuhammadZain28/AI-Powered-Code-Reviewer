@@ -5,41 +5,58 @@ import numpy as np
 class EmbeddingService:
     def __init__(self, model_name: str = 'all-MiniLM-L6-v2'):
         self.model_name = model_name
-        self.model = SentenceTransformer(model_name)
+        self.model = SentenceTransformer('./app/models/all-MiniLM-L6-v2')
         self.logger = get_logger("EmbeddingService")
 
     def build_text(self, chunk: dict, function_calls: dict) -> str:
         purpose = chunk['docstring'] if chunk['docstring'] else chunk['name']
+        imports = function_calls.get(chunk['id'], {}).get('libraries')
+
+        if imports is [] or imports is None:
+            imports = "None"
+        else:
+            imports = '\n'.join(list(imports))
+        parameters = chunk.get('parameters')
+        if parameters is None or parameters is []:
+            parameters = "None"
+        else:
+            parameters = '\n'.join(parameters)
+        calls = function_calls.get(chunk['id'], {}).get('calls')
+        if calls is None or calls is []:
+            calls = "None"
+        else:
+            calls = '\n'.join(list(calls))
+        return_values = chunk.get('return_values')
+        if return_values is None or return_values is []:
+            return_values = "None"
+        else:
+            return_values = '\n'.join(return_values)
         return f"""
 NAME: {chunk['name']}
 
 PURPOSE:
-{chunk['docstring']}.
+{purpose}.
 
-CLASS NAME: {chunk['class_name']}
+CLASS NAME: {chunk['class']}
 
 IMPORTS USED:
-{'\n'.join(function_calls.get(chunk['id'], {}).get('libraries', []))}
+{imports}
 
 PARAMETERS:
-{'\n'.join(chunk['parameters'])}
+{parameters}
 
 FUNCTION CALLS:
-{'\n'.join(function_calls.get(chunk['id'], {}).get('calls', []))}
+{calls}
 
 RETURN VALUES:
-{'\n'.join(chunk['return_values'])}
+{return_values}
 
 CODE:
 {chunk['content']}
 """
-    def embed_chunk(self, chunk_data: dict, function_calls: dict) -> np.ndarray:
-        chunk = chunk_data['chunk']
-        path = chunk_data['path']
-        language = chunk_data['language']
-        text = self.build_text(chunk, function_calls)
+    def embed_chunk(self, texts: list) -> np.ndarray:
         try:
-            embedding = self.model.encode(text)
+            embedding = self.model.encode(texts, batch_size=32, convert_to_numpy=True)
             return embedding
 
         except Exception as e:
@@ -48,13 +65,15 @@ CODE:
 
     def embed_chunks(self, chunks: dict, function_calls: dict) -> list:
         vectors = []
-        ids = []
-        for file_id, file_chunks in chunks.items():
-            embedding = self.embed_chunk(file_chunks, function_calls)
-            if embedding is not None:
-                ids.append(file_chunks['chunk']['id'])
-                vectors.append(embedding)
-        return ids, vectors
+        texts = []
+        for _, file_chunks in chunks.items():
+            for chunk in file_chunks['chunks']:
+                text = self.build_text(chunk, function_calls)
+                if text is not None:
+                    texts.append(text)
+        if texts:
+            vectors = self.embed_chunk(texts)
+        return vectors
 
 if __name__ == "__main__":
     embedding_service = EmbeddingService()
@@ -62,7 +81,7 @@ if __name__ == "__main__":
         'chunk': {
             'id': 1,
             'name': 'example_function',
-            'class_name': 'ExampleClass',
+            'class': 'ExampleClass',
             'parameters': ['param1', 'param2'],
             'return_values': ['return1'],
             'docstring': 'This is an example function.',

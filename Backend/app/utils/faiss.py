@@ -6,11 +6,23 @@ from app.utils.logger import get_logger
 base_path = Path(__file__).resolve().parents[2]
 
 class FaissIndex:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(FaissIndex, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self, dimension: int):
+        if hasattr(self, 'initialized') and self.initialized:
+            return
         self.dimension = dimension
         self.index_path = base_path / "app" / "storage" / "index.faiss"
-        self.index = faiss.IndexIDMap(faiss.IndexFlatIP(dimension))
-        self.__logger = get_logger("FaissIndex")
+
+        self.logger = get_logger("FaissIndex")
+        self.index = self.load_index()
+
+        self.initialized = True
 
     def normalize_embeddings(self, vector):
         norm = np.linalg.norm(vector)
@@ -35,21 +47,23 @@ class FaissIndex:
             print(f"Error saving index: {e}")
 
     def load_index(self):
-        self.index = faiss.read_index(str(self.index_path))
-        self.__logger.info(f"Loaded FAISS index from {self.index.ntotal} embeddings")
+        if self.index_path.exists():
+            self.logger.info("Loading FAISS index from disk")
+            return faiss.read_index(str(self.index_path))
+        else:
+            self.logger.info("Creating new FAISS index")
+            return faiss.IndexIDMap(faiss.IndexFlatIP(self.dimension))
 
 
     def search(self, vector, k=5):
         """Search for similar embeddings in the index"""
-        self.load_index()
-
         vector = np.array([vector], dtype=np.float32)
 
         faiss.normalize_L2(vector)
         # Perform the search
         scores, ids = self.index.search(vector, k)
 
-        self.__logger.info(f"Search results - IDs: {ids[0]}, Scores: {scores[0]}")
+        self.logger.info(f"Search results - IDs: {ids[0]}, Scores: {scores[0]}")
 
         return (ids[0], scores[0])
 

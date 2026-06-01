@@ -2,7 +2,6 @@ import hashlib
 from app.utils.tokenizer import normalize
 from uuid6 import uuid7
 import re
-import json
 from tree_sitter import Language, Parser
 import tree_sitter_cpp
 import tree_sitter_java
@@ -43,7 +42,7 @@ class Chunker():
         self.calls = []
         self.attributes = []
         self.chunks = []
-        self.complexity = {"branching": 0, "loop": 0, "logical": 0, "function_call": 0, "return": 0}
+        self.complexity = 1
         self.lines = source_code.splitlines()
         self.__logger = get_logger("Chunker")
         self.current_class = None
@@ -69,7 +68,9 @@ class Chunker():
                 calls, returns = self.extract_calls(node)
                 docstring = self.extract_docstring(node)
 
-                chunk = self.build_chunk(id, node, node.type, docstring=docstring, parameters=params, return_values=returns)
+                print(f"Complexity for chunk {self.get_node_name(node)}: {self.complexity}")
+
+                chunk = self.build_chunk(id, node, node.type, docstring=docstring, parameters=params, return_values=returns, complexity=self.complexity)
 
                 self.calls.extend(classify_calls(calls, self.imports, self.imports_modules, id))
 
@@ -282,32 +283,29 @@ class Chunker():
         returns = []
 
         def traverse(curr):
-            if curr.type in [
+            if curr.type in {
                 "if_statement",
                 "match_statement",
                 "case_statement",
                 "except_clause",
                 "conditional_expression",
                 "switch_statement",
-                "try_statement"
-            ]:
-                self.complexity["branching"] += 1
-            elif curr.type in ["for_statement", "while_statement"]:
-                self.complexity["loop"] += 1
-
-            elif curr.type in ["or_expression", "and_expression"]:
-                self.complexity["logical"] += 1
+                "try_statement",
+                "for_statement",
+                "while_statement",
+                "or_expression",
+                "and_expression"
+            }:
+                self.complexity += 1
 
             elif curr.type in {"call", "call_expression", "member_expression"}:
                 func_node = curr.child_by_field_name("function")
 
                 if func_node:
-                    self.complexity["function_call"] += 1
                     call_name = self.get_source_segment(func_node)
                     calls.append(call_name)
 
             elif curr.type == "return_statement":
-                self.complexity["return"] += 1
                 return_value = self.get_source_segment(curr)
                 returns.append(return_value.split("return", 1)[-1].strip())
 
@@ -331,7 +329,7 @@ class Chunker():
         cls = (
             id,                             # unique identifier for the class
             self.file_id,                   # associate class with its file
-            self.current_class,       # human-readable class name
+            self.class_name,                # human-readable class name
             node.start_point[0] + 1,        # line numbers are 0-indexed in tree-sitter
             node.end_point[0] + 1,          # end line of the class
             docstring,                      # docstring for the class
@@ -339,7 +337,7 @@ class Chunker():
         )
         return cls
 
-    def build_chunk(self, id, node, chunk_type, docstring=None, parameters=None, return_values=None):
+    def build_chunk(self, id, node, chunk_type, docstring=None, parameters=None, return_values=None, complexity=1):
         code = self.get_source_segment(node)
         chunk = (
             id,                             # unique identifier for the chunk
@@ -355,9 +353,9 @@ class Chunker():
             docstring,                      # docstring for the chunk
             parameters,                     # list of parameters if it's a function/method
             return_values,                  # list of return values if it's a function/method
-            json.dumps(self.complexity)     # complexity metrics for the chunk
+            complexity                      # complexity metrics for the chunk
         )
-        self.complexity = {"branching": 0, "loop": 0, "logical": 0, "function_call": 0, "return": 0}
+        self.complexity = 1
         return chunk
 
     def calculate_hash(self, content: str) -> str:
@@ -399,11 +397,6 @@ def classify_calls(chunk_calls: list, imports: list, import_modules: list, chunk
         imports       = parsed import list from your schema
         class_methods = ['__init__', 'normalize_embeddings', 'add_embeddings', ...]
         """
-
-        # Step 1: Build alias → source map from imports
-        # np        → numpy        (external)
-        # get_logger → app.utils.logger (internal project)
-        # Path      → pathlib      (stdlib)
 
         alias_map = {}
         for imp in imports:
@@ -506,20 +499,3 @@ if __name__ == "__main__":
 
     with open(file, "r") as f:
         code = f.read()
-
-    chunker = Chunker(code, language, "faiss.py", uuid7())
-    classes, imports, chunks = chunker.chunk_code()
-
-    print("Imports:")
-    print(json.dumps(imports, indent=2))
-
-    for cls in classes:
-        print(f"Class: {cls['name']}")
-
-        for chunk in cls['chunks']:
-            print(f"  Method: {chunk['name']}")
-            print(f"    Complexity: {chunk['complexity']}")
-
-            for call_type, calls in chunk['calls'].items():
-                for call in calls:
-                    print(f"    {call_type}: {call['call'], }")
