@@ -69,6 +69,7 @@ CODE:
         for _, file_chunks in chunks.items():
             for chunk in file_chunks['chunks']:
                 text = self.build_text(chunk, function_calls)
+
                 if text is not None:
                     texts.append(text)
         if texts:

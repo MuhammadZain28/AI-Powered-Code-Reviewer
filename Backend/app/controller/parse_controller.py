@@ -45,12 +45,12 @@ class ParseController:
 
         table_data = {
             'files': { 'data': files, 'columns': ['id', 'project_id', 'path', 'language', 'hash'] },
-            'imports': { 'data': imports, 'columns': ['id', 'file_id', 'type', 'source'] },
+            'imports': { 'data': imports, 'columns': ['id', 'file_id', 'source', 'type'] },
             'import_modules': { 'data': import_modules, 'columns': ['import_id', 'module', 'alias'] },
             'classes': { 'data': classes, 'columns': ['id', 'file_id', 'name', 'start_line', 'end_line', 'docstring', 'inheritance'] },
             'class_attributes': { 'data': attributes, 'columns': ['class_id', 'name', 'attribute_type', 'default_value', 'is_static'] },
             'chunks': { 'data': chunks, 'columns': ['id', 'file_id', 'class_id', 'class_name', 'name', 'content', 'start_line', 'end_line', 'chunk_type', 'hash', 'docstring', 'parameters', 'return_values', 'complexity'] },
-            'calls': { 'data': calls, 'columns': ['caller_id', 'call_type', 'function_name', 'source', 'resolve_to', 'library'] }
+            'calls': { 'data': calls, 'columns': ['caller_id', 'call_type', 'function_name', 'source', 'resolve_to', 'library', 'callee_id'] }
         }
 
 

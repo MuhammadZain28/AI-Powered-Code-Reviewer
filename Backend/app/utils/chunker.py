@@ -1,4 +1,5 @@
 import hashlib
+from unicodedata import name
 from app.utils.tokenizer import normalize
 from uuid6 import uuid7
 import re
@@ -42,6 +43,7 @@ class Chunker():
         self.calls = []
         self.attributes = []
         self.chunks = []
+        self.functions = {}
         self.complexity = 1
         self.lines = source_code.splitlines()
         self.__logger = get_logger("Chunker")
@@ -68,11 +70,9 @@ class Chunker():
                 calls, returns = self.extract_calls(node)
                 docstring = self.extract_docstring(node)
 
-                print(f"Complexity for chunk {self.get_node_name(node)}: {self.complexity}")
-
                 chunk = self.build_chunk(id, node, node.type, docstring=docstring, parameters=params, return_values=returns, complexity=self.complexity)
 
-                self.calls.extend(classify_calls(calls, self.imports, self.imports_modules, id))
+                self.calls.extend(self.classify_calls(calls, self.imports, self.imports_modules, id))
 
                 self.chunks.append(chunk)
 
@@ -339,12 +339,13 @@ class Chunker():
 
     def build_chunk(self, id, node, chunk_type, docstring=None, parameters=None, return_values=None, complexity=1):
         code = self.get_source_segment(node)
+        name = self.get_node_name(node)
         chunk = (
             id,                             # unique identifier for the chunk
             self.file_id,                   # associate chunk with its file
             self.current_class,             # associate chunk with its class (if any)
             self.class_name,                # associate class name
-            self.get_node_name(node),       # human-readable name (function name, method name, etc.)
+            name,                           # human-readable name (function name, method name, etc.)
             code,                           # actual code content of the chunk
             node.start_point[0] + 1,        # line numbers are 0-indexed in tree-sitter
             node.end_point[0] + 1,          # end line of the chunk
@@ -356,6 +357,7 @@ class Chunker():
             complexity                      # complexity metrics for the chunk
         )
         self.complexity = 1
+        self.functions[name] = id
         return chunk
 
     def calculate_hash(self, content: str) -> str:
@@ -391,111 +393,88 @@ class Chunker():
         code = re.sub(r'\n{3,}', '\n\n', code)
         return code.strip()
 
-def classify_calls(chunk_calls: list, imports: list, import_modules: list, chunk_id: str):
-        """
-        chunk_calls   = ['faiss.IndexIDMap', 'np.linalg.norm', 'get_logger', 'self.save_index']
-        imports       = parsed import list from your schema
-        class_methods = ['__init__', 'normalize_embeddings', 'add_embeddings', ...]
-        """
+    def classify_calls(self, chunk_calls: list, imports: list, import_modules: list, chunk_id: str) -> list:
+            """
+            chunk_calls   = ['faiss.IndexIDMap', 'np.linalg.norm', 'get_logger', 'self.save_index']
+            imports       = parsed import list from your schema
+            class_methods = ['__init__', 'normalize_embeddings', 'add_embeddings', ...]
+            """
+            alias_map = {}
+            for imp in imports:
+                for module_info in import_modules:
+                    module = module_info[1]
+                    alias = module_info[2]
+                    key = alias if alias else module
+                    alias_map[key] = {
+                        "source": imp[2],
+                        "module": module
+                    }
 
-        alias_map = {}
-        for imp in imports:
-            for module_info in import_modules:
-                module = module_info[1]
-                alias = module_info[2]
-                key = alias if alias else module
-                alias_map[key] = {
-                    "source": imp[2],
-                    "module": module
-                }
 
-        # Step 2: Known external libraries (expand this list)
-        EXTERNAL_LIBS = {"faiss", "numpy", "np", "torch", "sklearn",
-                        "pandas", "pd", "requests", "flask", "fastapi"}
+            result = set()
 
-        STDLIB = {"pathlib", "os", "sys", "json", "re", "math",
-                "collections", "itertools", "typing"}
+            for call in chunk_calls:
+                parts = call.split(".")   # faiss.IndexIDMap → faiss
+                if len(parts) == 2:
+                    root, child = parts[0], parts[1]
+                    if root == "self":
+                        result.add((
+                            chunk_id,
+                            "internal_method_call",
+                            call,
+                            "class",
+                            child,
+                            None,
+                            self.functions.get(child)
+                        ))
 
-        result = set()
+                else:
+                    root, child = parts[0], None
 
-        for call in chunk_calls:
-            root = call.split(".")[0]   # faiss.IndexIDMap → faiss
-
-            # self.method() — internal to class
-            if root == "self":
-                method_name = call.split(".")[1] if "." in call else call
-                result.add((
-                    chunk_id,                   # associate call with its chunk
-                    "internal_method_call",     # type of call
-                    call,                       # full call expression
-                    "class",                    # source is the class itself
-                    method_name,                # resolves to method name
-                    None                        # no library since it's internal
-                ))
-
-            # aliased or direct external lib
-            elif root in EXTERNAL_LIBS:
-                result.add((
-                    chunk_id,
-                    "external_lib_call",
-                    call,
-                    alias_map.get(root, {}).get("source", root),
-                    root,
-                    alias_map.get(root, {}).get("source", root)
-                ))
-
-            # stdlib
-            elif root in STDLIB:
-                result.add((
-                    chunk_id,
-                    "stdlib_call",
-                    call,
-                    alias_map.get(root, {}).get("source", root),
-                    root,
-                    alias_map.get(root, {}).get("source", root)
-                ))
-
-            # came from an import → could be cross-file project code
-            elif root in alias_map:
-                source = alias_map[root]["source"]
-                # if source has your project namespace → cross-file
-                if source.startswith("app.") or '/' in source:
+                if root in self.functions:
                     result.add((
                         chunk_id,
-                        "cross_file_call",
+                        "internal_method_call",
                         call,
-                        source,
-                        alias_map[root]["module"],
-                        None
+                        "file",
+                        root,
+                        None,
+                        self.functions.get(root)
                     ))
-                else:
+
+                # aliased or direct external lib
+                elif root in alias_map:
+                    source = alias_map[root]["source"]
                     result.add((
                         chunk_id,
                         "external_lib_call",
                         call,
                         source,
-                        None,
-                        source
+                        child,
+                        source,
+                        None
                     ))
 
-            else:
-                result.add((
-                    chunk_id,
-                    "unresolved_call",
-                    call,
-                    None,
-                    None,
-                    None
-                ))
+                    # if source has your project namespace → cross-file
+                    if source.startswith("app.") or '/' in source:
+                        result.add((
+                            chunk_id,
+                            "cross_file_call",
+                            call,
+                            source,
+                            alias_map[root]["module"],
+                            None,
+                            self.functions.get(alias_map[root]["module"])  # attempt to link to a file-level function if it exists
+                        ))
 
-        return list(result)
+            return list(result)
 
 if __name__ == "__main__":
-    # file = r"D:\Project\Inventory-App\backend\controller\customer.js"
-    # language = "JavaScript"
-
     file = r"D:\Project\AI-Powered Code Reviewer\Backend\app\utils\faiss.py"
     language = "Python"
 
     with open(file, "r") as f:
         code = f.read()
+
+    chunker = Chunker(code, language, file, "test_file_id")
+    chunks = chunker.chunk_code()

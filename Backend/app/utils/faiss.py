@@ -36,7 +36,7 @@ class FaissIndex:
             faiss.normalize_L2(vectors)
             self.index.add_with_ids(vectors, np.array(ids, dtype=np.int64))
         except Exception as e:
-            print(f"Error adding embeddings: {e}")
+            self.logger.error(f"Error adding embeddings: {e}")
         self.save_index()
         return self.index.ntotal
 
@@ -44,7 +44,7 @@ class FaissIndex:
         try:
             faiss.write_index(self.index, str(self.index_path))
         except Exception as e:
-            print(f"Error saving index: {e}")
+            self.logger.error(f"Error saving index: {e}")
 
     def load_index(self):
         if self.index_path.exists():
