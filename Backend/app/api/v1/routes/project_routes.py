@@ -4,11 +4,11 @@ from app.controller.project_controller import ProjectController
 project_router = APIRouter(prefix="/projects", tags=["projects"])
 
 @project_router.post("/", response_model=dict)
-async def create_project(name: str, description: str, repo_path: str):
+async def create_project(name: str, description: str, repo_path: str, features: str = None, modules: str = None, frontend: str = None, backend: str = None, technologies: str = None):
     try:
         controller = ProjectController()
-        project = await controller.create_project(name, description, repo_path)
-        return {"id": project.id, "name": project.name, "path": project.path, "description": project.description}
+        project = await controller.create_project(name, description, repo_path, features, modules, frontend, backend, technologies)
+        return {"message": "Project created successfully", "project_id": project}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

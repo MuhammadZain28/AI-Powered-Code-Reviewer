@@ -4,10 +4,12 @@ class ProjectController:
     def __init__(self):
         pass
 
-    async def create_project(self, name: str, description: str, repo_path: str) -> Project:
-        project = Project(id=None, name=name, path=repo_path, description=description)
-        await project.save()
-        return project
+    async def create_project(self, name: str, description: str, repo_path: str, features: str = None, modules: str = None, frontend: str = None, backend: str = None, technologies: str = None) -> Project:
+        features = features.split(",") if features else []
+        modules = modules.split(",") if modules else []
+        technologies = technologies.split(",") if technologies else []
+        result = await Project().insert(name, repo_path, description, features, modules, frontend, backend, technologies)
+        return result
 
     async def get_project(self, project_id: str) -> Project:
         project = Project(id=project_id, name="", path="", description="")

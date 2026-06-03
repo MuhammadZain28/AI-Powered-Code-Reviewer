@@ -1,3 +1,5 @@
+import json
+
 from app.managers.database import Database
 from app.utils.logger import get_logger
 class Chunk:
@@ -31,7 +33,7 @@ class Chunk:
         ids = []
         score_map = {}
         query = """
-SELECT *
+SELECT chunk_type, name, parameters, return_values, complexity, hash, docstring, calls
 FROM chunks
 WHERE embedding_id = ANY($1::bigint[])
 """
@@ -51,3 +53,15 @@ WHERE embedding_id = ANY($1::bigint[])
             results.append(row)
 
         return results
+
+    async def fetch_chunk_context(self, file_id):
+        db = Database()
+        result = []
+        query = "SELECT public.get_function_context($1);"
+        record = await db.fetch(query, file_id)
+        print(f"Fetched chunk context for file ID {file_id}: {record}")
+        if record:
+            for row in record:
+                result.append(json.loads(row["get_function_context"]))
+            return result
+        return None
