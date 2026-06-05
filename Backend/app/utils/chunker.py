@@ -41,10 +41,9 @@ JS_LIFECYCLE = {
     "componentwillmount", "useeffect"
 }
 class Chunker():
-    def __init__(self, source_code: str, language: str, file_path: str, file_id: str):
+    def __init__(self, source_code: str, language: str, file_id: str):
         self.source_code = source_code
         self.language = language
-        self.file_path = file_path
         self.file_id = file_id
         self.class_chunk = []
         self.imports = []
@@ -52,19 +51,19 @@ class Chunker():
         self.calls = []
         self.attributes = []
         self.chunks = []
-        self.functions = {}
         self.complexity = 1
-        self.lines = source_code.splitlines()
-        self.__logger = get_logger("Chunker")
         self.current_class = None
         self.class_name = None
+        self.functions = {}
+
+        self.__logger = get_logger("Chunker")
 
     def get_parser(self):
         parser = Parser()
         parser.language = LANGUAGES[self.language]
         return parser
 
-    def extract_chunks(self, node):
+    def extract_chunks(self, node, name_map: dict = None, hash_map: dict = None):
         if node.type in TARGET_NODES:
             if node.type in {"class_definition", "class_declaration"}:
                 self.current_class = uuid7()
@@ -74,7 +73,29 @@ class Chunker():
                 self.class_chunk.append(self.build_class(self.current_class, node, docstring))
 
             else:
-                id = uuid7()
+                name = self.get_node_name(node)
+                code = self.get_source_segment(node)
+                code_hash = self.calculate_hash(code)
+
+                if name_map and hash_map:
+                    prev_id, hash = name_map.get(name, {"id": None, "hash": None})
+                    if not prev_id:
+                        prev_id, name = hash_map.get(code_hash, {"id": None, "name": None})
+                        if prev_id:
+                            del name_map[name]  # remove matched name as well
+            
+                    if prev_id and hash == code_hash:
+                        self.__logger.info(f"Chunk '{name}' is unchanged. Skipping re-chunking.")
+                        del name_map[name]  # remove matched name to speed up future lookups
+                        return
+                    elif prev_id and hash != code_hash:
+                        del name_map[name]  # remove old name mapping since content has changed
+                        id = prev_id
+                    else:
+                        id = uuid7()
+                else:
+                    id = uuid7()
+
                 params = self.extract_parameters(node)
                 calls, returns = self.extract_calls(node)
                 docstring = self.extract_docstring(node)
@@ -328,12 +349,12 @@ class Chunker():
 
         return (calls, returns)
 
-    def chunk_code(self):
+    def chunk_code(self, name_map: dict = None, hash_map: dict = None):
         parser = self.get_parser()
         self.source_code = self.clean_code(self.source_code)
         tree = parser.parse(bytes(self.source_code, "utf8"))
         root_node = tree.root_node
-        self.extract_chunks(root_node)
+        self.extract_chunks(root_node, name_map, hash_map)
         return {
             "classes": self.class_chunk,
             "imports": self.imports,
@@ -411,7 +432,7 @@ class Chunker():
             framework_bonus = -10
 
 
-        score = (complexity * 2.5) + (length * 0.4) + (calls * 3) + framework_bonus
+        score = (complexity * 2.5) + (length * 0.5) + (calls * 3) + framework_bonus
         if score < 10:
             return "skip", score
         if score < 15:

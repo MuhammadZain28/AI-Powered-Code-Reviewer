@@ -37,6 +37,7 @@ SELECT chunk_type, name, parameters, return_values, complexity, hash, docstring,
 FROM chunks
 WHERE embedding_id = ANY($1::bigint[])
 """
+        
         for c_id, s in zip(chunk_id, score):
             score_map[int(c_id)] = float(s)
             ids.append(int(c_id))
@@ -52,3 +53,14 @@ WHERE embedding_id = ANY($1::bigint[])
             results.append(row)
 
         return results
+    
+    async def fetch_chunks_hash(self, files: list):
+        db = Database()
+        query = "SELECT chunks.id, name, hash FROM chunks JOIN files ON chunks.file_id = files.id WHERE files.path = ANY($1::Text[])"
+        rows = await db.fetch(query, files)
+        name_map, hash_map = {}, {}
+        for row in rows:
+            print(f"Fetched chunk from database: id={row['id']}, name={row['name']}, hash={row['hash']}")
+            name_map[row["name"]] = {"id": row["id"], "hash": row["hash"]}
+            hash_map[row["hash"]] = {"id": row["id"], "name": row["name"]}
+        return name_map, hash_map

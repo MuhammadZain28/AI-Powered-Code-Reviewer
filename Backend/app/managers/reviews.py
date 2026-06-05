@@ -68,7 +68,6 @@ class Review:
 
     
     def build_message(self, review_data: dict):
-        print(f"Building message for review data: {type(review_data)}")
         system_prompt = """
 Your task is to review code in the context of the entire project, not in isolation.
 
@@ -94,35 +93,14 @@ Output valid JSON only.
             {"role": "user", "content": f"Context:\n{json.dumps(review_data, indent=4)}"}
         ]
     
-    async def review_queue(self, review_data: list):
+    async def build_queue(self, review_data: list):
         db = Database()
-
-        query = """
-INSERT INTO review_queue (
-    chunk_id,
-    priority,
-    status,
-    updated_at
-)
-SELECT
-    x.chunk_id,
-    x.priority,
-    'PENDING',
-    NOW()
-FROM UNNEST(
-    $1::uuid[],
-    $2::smallint[]
-) AS x(chunk_id, priority)
-ON CONFLICT (chunk_id)
-DO UPDATE
-SET
-    status = EXCLUDED.status,
-    priority = EXCLUDED.priority,
-    updated_at = NOW();
-"""
         
-        chunk_ids = [item['chunk_id'] for item in review_data]
-        priorities = [item['priority'] for item in review_data]
-
-        result = await db.execute(query, chunk_ids, priorities)
+        result = await db.copy_to_table('review_queue', data=review_data, columns=['chunk_id', 'priority', 'updated', 'status'])
+        return result
+    
+    async def delete_existing_reviews(self, chunk_ids: list):
+        db = Database()
+        query = "DELETE FROM reviews WHERE chunk_id = ANY($1);"
+        result = await db.execute(query, chunk_ids)
         return result
