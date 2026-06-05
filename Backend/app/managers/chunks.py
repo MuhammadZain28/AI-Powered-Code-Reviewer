@@ -22,7 +22,7 @@ class Chunk:
 
     async def fetch_embedding_id(self, project_id):
         db = Database()
-        query = "SELECT array_agg(embedding_id) FROM chunks JOIN chunks ON chunks.chunk_id = chunks.id WHERE chunks.project_id = $1"
+        query = "SELECT array_agg(embedding_id ORDER BY embedding_id) FROM chunks JOIN files ON chunks.file_id = files.id WHERE files.project_id = $1"
         result = await db.fetch_values(query, project_id)
         if result:
             return result
@@ -33,7 +33,7 @@ class Chunk:
         ids = []
         score_map = {}
         query = """
-SELECT chunk_type, name, parameters, return_values, complexity, hash, docstring, calls
+SELECT chunk_type, name, parameters, return_values, complexity, hash, docstring, embedding_id, content
 FROM chunks
 WHERE embedding_id = ANY($1::bigint[])
 """
@@ -41,6 +41,7 @@ WHERE embedding_id = ANY($1::bigint[])
             score_map[int(c_id)] = float(s)
             ids.append(int(c_id))
 
+        print(f"Fetching chunks with IDs: {ids}")
         rows = await db.fetch(query, ids)
 
         results = []
@@ -51,15 +52,3 @@ WHERE embedding_id = ANY($1::bigint[])
             results.append(row)
 
         return results
-
-    async def fetch_chunk_context(self, chunk_id):
-        db = Database()
-        result = {}
-        query = "SELECT public.get_function_context($1);"
-        record = await db.fetch(query, chunk_id)
-
-        if record:
-            for row in record:
-                result = json.loads(row["get_function_context"])
-            return result
-        return None

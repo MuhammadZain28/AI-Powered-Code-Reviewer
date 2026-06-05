@@ -1,3 +1,6 @@
+import asyncio
+import json
+
 from app.managers.database import Database
 
 class Review:
@@ -8,20 +11,118 @@ class Review:
         self.description = description
         self.severity = severity
         self.suggested_fix = suggested_fix
+    
+    def flatten_reviews(self, data: dict):
+        chunk_rows = []
+        issue_rows = []
+
+        for item in data:
+            # each item is like: {chunk_id: {...}}
+            for chunk_id, value in item.items():
+
+                # -------- chunk table --------
+                chunk_rows.append((
+                    chunk_id,
+                    value.get("purpose"),
+                    value.get("module")
+                ))
+
+                # -------- issue table --------
+                for issue in value.get("issues", []):
+                    issue_rows.append((
+                        chunk_id,
+                        issue.get("severity"),
+                        issue.get("category"),
+                        issue.get("review"),
+                        issue.get("suggested_fix")
+                    ))
+
+        return chunk_rows, issue_rows
 
     async def insert(self, review_data: dict):
         db = Database()
-        table = []
-        columns = ["chunk_id", "purpose", "severity", "category", "explanation", "suggested_fix"]
-        for issue in review_data:
-            print(f"Inserting review issue: {issue}")
-            table.append((
-                issue.get("chunk_id"),
-                issue.get("purpose"),
-                issue.get("severity"),
-                issue.get("category"),
-                issue.get("explanation"),
-                issue.get("suggested_fix")
-            ))
-        result = await db.copy_to_table("reviews", data=table, columns=columns)
+
+        summary, reviews = self.flatten_reviews(review_data)
+        result = await asyncio.gather(
+            db.copy_to_table("summaries", data=summary, columns=["chunk_id", "purpose", "module"]),
+            db.copy_to_table("reviews", data=reviews, columns=["chunk_id", "severity", "category", "review", "suggested_fix"])
+        )
+        return result
+    
+    async def fetch_chunk_context(self, chunk_id):
+        db = Database()
+        result = []
+        query = "SELECT public.get_function_context($1);"
+        record = await db.fetch(query, chunk_id)
+
+        print(f"Fetched chunk context from database for chunk_id {chunk_id}: {len(record)}")
+
+        if record:
+            for row in record:
+                data = row['get_function_context']
+                print(f"Processing chunk context data: {data}")
+                result.append({'id': data[0], 'message': self.build_message(json.loads(data[1]))})
+
+            return result
+        return None
+
+    
+    def build_message(self, review_data: dict):
+        print(f"Building message for review data: {type(review_data)}")
+        system_prompt = """
+Your task is to review code in the context of the entire project, not in isolation.
+
+Output should be in JSON format with the following structure:
+{
+  "purpose": "Purpose of the code chunk",
+  "module": "What module it is connected according to project"
+  "issues": [
+    {
+      "severity": "Critical | High | Medium | Low | None",
+      "category": "Bug | Security | Performance | Maintainability | Readability | Architecture",
+      "review": "Detailed review of the code.",
+      "suggested_fix": "Specific suggestions for how to fix the issue."
+    },
+    ...
+  ]
+}
+Output valid JSON only.
+"""
+
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Context:\n{json.dumps(review_data, indent=4)}"}
+        ]
+    
+    async def review_queue(self, review_data: list):
+        db = Database()
+
+        query = """
+INSERT INTO review_queue (
+    chunk_id,
+    priority,
+    status,
+    updated_at
+)
+SELECT
+    x.chunk_id,
+    x.priority,
+    'PENDING',
+    NOW()
+FROM UNNEST(
+    $1::uuid[],
+    $2::smallint[]
+) AS x(chunk_id, priority)
+ON CONFLICT (chunk_id)
+DO UPDATE
+SET
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    updated_at = NOW();
+"""
+        
+        chunk_ids = [item['chunk_id'] for item in review_data]
+        priorities = [item['priority'] for item in review_data]
+
+        result = await db.execute(query, chunk_ids, priorities)
         return result

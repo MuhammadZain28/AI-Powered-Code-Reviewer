@@ -1,5 +1,4 @@
 import hashlib
-from unicodedata import name
 from app.utils.tokenizer import normalize
 from uuid6 import uuid7
 import re
@@ -10,7 +9,6 @@ import tree_sitter_javascript
 import tree_sitter_typescript
 import tree_sitter_python
 from app.utils.logger import get_logger
-
 
 LANGUAGES = {
     "Python": Language(tree_sitter_python.language()),
@@ -30,6 +28,17 @@ TARGET_NODES = {
     "field_definition",
     "function_expression",
     "constructor",
+}
+
+FRAMEWORK_NAMES = {
+    "save", "delete", "update", "create", "get", "set",
+    "to_json", "from_json", "to_dict", "from_dict",
+    "render", "serialize", "deserialize", "__repr__", "__str__", "__eq__", "__hash__"
+}
+
+JS_LIFECYCLE = {
+    "constructor", "componentdidmount", "componentdidupdate",
+    "componentwillmount", "useeffect"
 }
 class Chunker():
     def __init__(self, source_code: str, language: str, file_path: str, file_id: str):
@@ -70,7 +79,7 @@ class Chunker():
                 calls, returns = self.extract_calls(node)
                 docstring = self.extract_docstring(node)
 
-                chunk = self.build_chunk(id, node, node.type, docstring=docstring, parameters=params, return_values=returns, complexity=self.complexity)
+                chunk = self.build_chunk(id, node, docstring=docstring, parameters=params, return_values=returns, complexity=self.complexity)
 
                 self.calls.extend(self.classify_calls(calls, self.imports, self.imports_modules, id))
 
@@ -151,8 +160,8 @@ class Chunker():
             if child.type in {"function_definition", "method_definition", "function_declaration", "function_expression", "constructor"}:
 
                 fn_name = self.get_node_name(child)
-                if fn_name in {"__init__", "constructor"}:
-
+                if fn_name in {"__init__", "constructor", self.current_class}:
+                    
                     attributes.extend(
                         self.extract_instance_attributes(child)
                     )
@@ -303,6 +312,9 @@ class Chunker():
 
                 if func_node:
                     call_name = self.get_source_segment(func_node)
+                    parts = call_name.split(".")
+                    if parts[0] in {'db', 'database', 'session', 'Database()'} or parts[-1].lower() in {"fetch", "execute", "query", "save", "add", "update", "delete"}:
+                        self.complexity += 2
                     calls.append(call_name)
 
             elif curr.type == "return_statement":
@@ -322,7 +334,14 @@ class Chunker():
         tree = parser.parse(bytes(self.source_code, "utf8"))
         root_node = tree.root_node
         self.extract_chunks(root_node)
-        return (self.class_chunk, self.imports, self.chunks, self.calls, self.attributes, self.imports_modules)
+        return {
+            "classes": self.class_chunk,
+            "imports": self.imports,
+            "chunks": self.chunks,
+            "calls": self.calls,
+            "attributes": self.attributes,
+            "import_modules": self.imports_modules
+        }
 
     def build_class(self, id, node, docstring=None):
         self.class_name = self.get_node_name(node)
@@ -337,9 +356,14 @@ class Chunker():
         )
         return cls
 
-    def build_chunk(self, id, node, chunk_type, docstring=None, parameters=None, return_values=None, complexity=1):
+    def build_chunk(self, id, node, docstring=None, parameters=None, return_values=None, complexity=1):
         code = self.get_source_segment(node)
         name = self.get_node_name(node)
+        start = node.start_point[0] + 1
+        end = node.end_point[0] + 1
+        
+        chunk_type, score = self.classify_function(name, start, end, complexity, len(self.calls))
+
         chunk = (
             id,                             # unique identifier for the chunk
             self.file_id,                   # associate chunk with its file
@@ -347,9 +371,10 @@ class Chunker():
             self.class_name,                # associate class name
             name,                           # human-readable name (function name, method name, etc.)
             code,                           # actual code content of the chunk
-            node.start_point[0] + 1,        # line numbers are 0-indexed in tree-sitter
-            node.end_point[0] + 1,          # end line of the chunk
+            start,                          # start line of the chunk
+            end,                            # end line of the chunk
             chunk_type,                     # type of chunk (function, method, class, etc.)
+            score,                          # priority score for review
             self.calculate_hash(code),      # hash of the chunk content for quick comparisons
             docstring,                      # docstring for the chunk
             parameters,                     # list of parameters if it's a function/method
@@ -359,6 +384,45 @@ class Chunker():
         self.complexity = 1
         self.functions[name] = id
         return chunk
+    
+    def classify_function(self, name, start, end, complexity, calls=0):
+        """
+        Returns: skip | wrapper | user_defined
+        """
+
+        name_lower = name.lower()
+        length = abs(end - start)
+
+        # -------------------------
+        # 1. Constructor / lifecycle
+        # -------------------------
+        if (
+            name == "__init__"
+            or name == "constructor"
+            or name_lower in JS_LIFECYCLE
+        ):
+            return "skip", 0
+
+        # -------------------------
+        # 2. Simple framework wrappers
+        # -------------------------
+        framework_bonus = 0
+        if name_lower in FRAMEWORK_NAMES:
+            framework_bonus = -10
+
+
+        score = (complexity * 2.5) + (length * 0.4) + (calls * 3) + framework_bonus
+        if score < 10:
+            return "skip", score
+        if score < 15:
+            return "wrapper", score
+        elif score < 30:
+            return "low_priority", score
+        elif score < 50:
+            return "medium_priority", score
+        else:
+            return "high_priority", score
+
 
     def calculate_hash(self, content: str) -> str:
         return hashlib.sha256(content.encode('utf-8')).hexdigest()
@@ -468,13 +532,3 @@ class Chunker():
                         ))
 
             return list(result)
-
-if __name__ == "__main__":
-    file = r"D:\Project\AI-Powered Code Reviewer\Backend\app\utils\faiss.py"
-    language = "Python"
-
-    with open(file, "r") as f:
-        code = f.read()
-
-    chunker = Chunker(code, language, file, "test_file_id")
-    chunks = chunker.chunk_code()

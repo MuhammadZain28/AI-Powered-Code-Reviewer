@@ -1,4 +1,4 @@
-import asyncio
+import traceback
 import os
 import hashlib
 from app.utils.logger import get_logger
@@ -67,23 +67,40 @@ class ParserService:
 
     def chunk_code(self, code: str, language: str, file_path: str, id: str) -> list:
         chunker = Chunker(code, language, file_path, id)
-        chunks = chunker.chunk_code()
+        try:
+            chunks = chunker.chunk_code()
+        except Exception as e:
+
+            tb = traceback.extract_tb(e.__traceback__)
+
+            return {
+                "error": str(e),
+                "file": tb[-1].filename,
+                "line": tb[-1].lineno,
+                "function": tb[-1].name
+            }
+            chunks = []
         if not chunks:
             self.__logger.warning(f"No chunks extracted from code in language {file_path}. Returning entire file as one chunk.")
-            return [(
-            uuid7(),
-            id,
-            None,
-            f"{file_path.split('/')[-1]}",
-            code,
-            1,
-            code.count('\n') + 1,
-            'file',
-            self.file_hash(code),
-            None,
-            None,
-            None
-            )]
+            return {
+                "classes": [],
+                "imports": [],
+                "calls": [],
+                "attributes": [],
+                "chunks": [(
+                    uuid7(),
+                    id,
+                    None,
+                    f"{file_path.split('/')[-1]}",
+                    code,
+                1,
+                code.count('\n') + 1,
+                'file',
+                self.file_hash(code),
+                None,
+                None,
+                None
+                )]}
         return chunks
 
     def parse_project(self, project_id) -> dict:
@@ -92,12 +109,13 @@ class ParserService:
 
         for file in code_files:
             language = self.detect_language(file)
+            
             code = self.read_file(file)
+
             id = uuid7()
 
-            file_classes, file_imports, file_chunks, file_calls, file_attributes, file_import_modules = self.chunk_code(code, language, file, id)
+            chunked_code = self.chunk_code(code, language, file, id)
 
-            self.__logger.info(f"Extracted {len(file_classes)} classes from {file}")
 
             project_files.append((
                 id,                         # unique identifier for the file
@@ -107,13 +125,13 @@ class ParserService:
                 self.file_hash(code),       # hash of the file content for quick comparisons
             ))
 
-            project_classes.extend(file_classes)
-            project_imports.extend(file_imports)
-            project_chunks.extend(file_chunks)
-            project_calls.extend(file_calls)
-            project_attributes.extend(file_attributes)
-            project_import_modules.extend(file_import_modules)
-            self.__logger.info(f"Extracted {len(file_chunks)} code chunks from {file}")
+            project_classes.extend(chunked_code.get('classes', []))
+            project_imports.extend(chunked_code.get('imports', []))
+            project_chunks.extend(chunked_code.get('chunks', []))
+            project_calls.extend(chunked_code.get('calls', []))
+            project_attributes.extend(chunked_code.get('attributes', []))
+            project_import_modules.extend(chunked_code.get('import_modules', []))
+            self.__logger.info(f"Extracted {len(chunked_code.get('chunks', []))} code chunks from {file}")
         return {
             'files': project_files,
             'classes': project_classes,
@@ -123,9 +141,3 @@ class ParserService:
             'attributes': project_attributes,
             'import_modules': project_import_modules
         }
-
-if __name__ == "__main__":
-    repo_path = "D:\\Project\\NUCES"
-    service = ParserService(repo_path)
-    parsed_data = asyncio.run(service.scan_existing_project(project_id="21ccbbaa-049d-434e-bbc9-65f2e89660fa"))
-    print(f"Parsed data: {parsed_data}")

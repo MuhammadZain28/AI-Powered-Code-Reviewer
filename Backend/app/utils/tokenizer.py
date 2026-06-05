@@ -477,7 +477,9 @@ def _parse_c(tokens: List[Token], language: str, file_id: str) -> NormalizedImpo
 _PARSERS = {
     "Python":     _parse_python,
     "JavaScript": _parse_javascript,
+    "JavaScript (React)": _parse_javascript,
     "TypeScript": _parse_javascript,
+    "TypeScript (React)": _parse_javascript,
     "Java":       _parse_java,
     "C":          _parse_c,
     "Cpp":        _parse_c,

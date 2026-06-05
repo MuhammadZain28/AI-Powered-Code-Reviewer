@@ -34,17 +34,24 @@ class GitHubService:
 
     def get_last_commit_files(self):
         result = subprocess.run(
-            ["git", "-C", self.repo_url, "show", "--name-only", "--pretty=", "HEAD"],
+            ["git", "-C", self.repo_url, "diff", "HEAD", "--name-status"],
             capture_output=True,
             text=True
         )
-        files = result.stdout.strip().split("\n")
-        return [f for f in files if f]
+        files = {'A': [], 'M': [], 'D': []}
+        for f in result.stdout.strip().split("\n"):
+            status = f[0]
+            file_path = f[2:]
+            files[status].append(file_path)
+            self.logger.info(f"Changed file: {f}")
+        return files
 
 
 if __name__ == "__main__":
-    repo_url = "D:\\Project\\NUCES"
+    repo_url = "D:\\Project\\exam-seating-planer"
     service = GitHubService(repo_url)
     files = service.get_last_commit_files()
-    for f in files:
-        print(f"files: {f}")
+    for status, file_list in files.items():
+        print(f"Status: {status}")
+        for f in file_list:
+            print(f"files: {f}")
