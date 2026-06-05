@@ -19,7 +19,7 @@ class LLMClient:
 
         return cls._instance
 
-    def get_completion(self, messages, temperature=0.1, max_tokens=1000):
+    def get_completion(self, messages, temperature=0, max_tokens=800):
         try:
             response = self.client.chat.completions.create(
                 model=self.MODEL,
@@ -28,7 +28,7 @@ class LLMClient:
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            print(f"LLM Response: {response}")
+
             if response.choices[0].message.content:
                 return json.loads(response.choices[0].message.content)
             return response.choices[0].message.reasoning
