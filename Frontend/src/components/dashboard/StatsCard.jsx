@@ -1,15 +1,32 @@
-function StatsCard({ title, value }) {
-  return (
-    <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-lg w-72 border border-slate-800">
-      <h2 className="text-slate-400 text-lg">
-        {title}
-      </h2>
+import React from 'react'
+import Card from '../ui/Card'
 
-      <p className="text-4xl font-bold mt-4">
-        {value}
-      </p>
-    </div>
-  );
+const StatsCard = ({ title, value, icon, trend, color = 'primary' }) => {
+  const colors = {
+    primary: 'bg-primary-500',
+    green: 'bg-green-500',
+    yellow: 'bg-yellow-500',
+    red: 'bg-red-500'
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-gray-600">{title}</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
+          {trend && (
+            <p className={`text-xs mt-2 ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}% from last month
+            </p>
+          )}
+        </div>
+        <div className={`${colors[color]} p-3 rounded-full`}>
+          {icon}
+        </div>
+      </div>
+    </Card>
+  )
 }
 
-export default StatsCard;
+export default StatsCard

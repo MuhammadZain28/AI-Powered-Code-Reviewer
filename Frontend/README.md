@@ -1,50 +1,16 @@
-# AI Powered Context Aware Code Reviewer System
+# React + Vite
 
-## Timeline: 3 months (June 2024 - August 2024)
-### WEEK 1 — Foundation
-- Day 1–2                         ✅
-- Setup backend                   ✅
-- GitHub repo cloning             ✅
-- ZIP upload                      ✅
-- File extraction                 ✅
-- Day 3–4
-- File scanner                    ✅
-- Detect language/framework       ✅
-- Day 5–6
-- Integrate AI API
-- Simple review endpoint
-- Day 7
-- Return JSON review results
-- Frontend Tasks
-- Upload page
-- Repo link input
-- Review display UI
-### WEEK 2 — Context Awareness
-- Your Tasks
-- Day 8–9
-- Dependency graph/basic import tracking
-- Day 10–11
-- Repository summarizer
-- Day 12–13
-- Context-aware prompts
-- Day 14
-- Improve output formatting
-- Frontend Tasks
-- File tree
-- Severity badges
-- Highlight problematic lines
-### WEEK 3 — Polish + Finalization
-- Your Tasks
-- Day 15–16
-- Review history
-- Database integration
-- Day 17–18
-- Performance improvements
-- Error handling
-- Day 19–20
-- Testing
-- Prompt tuning
-- Day 21
-- PPT
-- Demo preparation
-- Final bug fixing
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+
+Currently, two official plugins are available:
+
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.

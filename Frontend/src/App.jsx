@@ -1,33 +1,21 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-
-import Dashboard from "./pages/Dashboard";
-import Repositories from "./pages/Repositories";
-import Reviews from "./pages/Reviews";
-import Login from "./pages/Login";
+import React from 'react'
+import { BrowserRouter } from 'react-router-dom'
+import { Toaster } from 'react-hot-toast'
+import { AuthProvider } from './context/AuthContext'
+import { ProjectProvider } from './context/ProjectContext'
+import { AppRoutes } from './routes/AppRoutes'
 
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-
-        <Route
-          path="/repositories"
-          element={<Repositories />}
-        />
-
-        <Route
-          path="/reviews"
-          element={<Reviews />}
-        />
-
-        <Route
-          path="/login"
-          element={<Login />}
-        />
-      </Routes>
+      <AuthProvider>
+        <ProjectProvider>
+          <Toaster position="top-right" />
+          <AppRoutes />
+        </ProjectProvider>
+      </AuthProvider>
     </BrowserRouter>
-  );
+  )
 }
 
-export default App;
+export default App
