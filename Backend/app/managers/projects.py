@@ -67,3 +67,5 @@ class Project:
         query = "SELECT * FROM projects"
         result = await db.fetch(query)
         return [Project(id=p['id'], name=p['name'], path=p['path'], description=p['description']) for p in result]
+
+        

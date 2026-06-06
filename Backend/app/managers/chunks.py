@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 from app.managers.database import Database
@@ -56,11 +57,150 @@ WHERE embedding_id = ANY($1::bigint[])
     
     async def fetch_chunks_hash(self, files: list):
         db = Database()
-        query = "SELECT chunks.id, name, hash FROM chunks JOIN files ON chunks.file_id = files.id WHERE files.path = ANY($1::Text[])"
+        query = """
+        SELECT 
+            files.id, 
+            files.project_id, 
+            files.language, 
+            files.path, 
+            classes.id as class_id, 
+            classes.name as class_name, 
+            classes.hash as class_hash,
+            chunks.id as chunk_id, 
+            chunks.name, 
+            chunks.hash 
+        FROM files 
+        LEFT JOIN chunks ON chunks.file_id = files.id 
+        LEFT JOIN classes ON files.id = classes.file_id WHERE files.path = ANY($1::Text[])
+        """
         rows = await db.fetch(query, files)
-        name_map, hash_map = {}, {}
+        class_map = {}
+        chunk_map = {}
+        files_in_db = {}
         for row in rows:
-            print(f"Fetched chunk from database: id={row['id']}, name={row['name']}, hash={row['hash']}")
-            name_map[row["name"]] = {"id": row["id"], "hash": row["hash"]}
-            hash_map[row["hash"]] = {"id": row["id"], "name": row["name"]}
-        return name_map, hash_map
+            print(f"Fetched chunk from database: id={row['chunk_id']}, name={row['name']}, hash={row['hash']}")
+
+            chunk_map[row["name"]] = {"id": row["chunk_id"], "hash": row["hash"]}
+            class_map[row["class_name"]] = {"id": row["class_id"], "hash": row["class_hash"]}
+            files_in_db[row["id"]] = {"project_id": row["project_id"], "language": row["language"], "path": row["path"]}
+
+        self.__logger.info(f"Fetched {len(chunk_map)} chunks from database for change management")
+        return {"chunk_map": chunk_map, "class_map": class_map, "files_in_db": files_in_db}
+
+    async def managed_changed_chunks(self, changed_chunks: list):
+        db = Database()
+
+        chunks = []
+        ids = []
+
+        for chunk in changed_chunks:
+            ids.append(str(chunk[0]))
+            chunks.append({
+                "id": str(chunk[0]),
+                "file_id": str(chunk[1]),
+                "class_id": str(chunk[2]),
+                "class_name": chunk[3],
+                "name": chunk[4],
+                "content": chunk[5],
+                "start_line": chunk[6],
+                "end_line": chunk[7],
+                "chunk_type": chunk[8],
+                "score": chunk[9],
+                "hash": chunk[10],
+                "docstring": chunk[11],
+                "parameters": chunk[12],
+                "return_values": [chunk[13]] if chunk[13] else [],
+                "complexity": chunk[14]
+            })
+
+        query = """
+INSERT INTO chunks (
+    id,
+    file_id,
+    class_id,
+    class_name,
+    name,
+    content,
+    start_line,
+    end_line,
+    chunk_type,
+    score,
+    hash,
+    docstring,
+    parameters,
+    return_values,
+    complexity
+)
+SELECT *
+FROM jsonb_to_recordset($1::jsonb) AS u(
+    id uuid,
+    file_id uuid,
+    class_id uuid,
+    class_name text,
+    name text,
+    content text,
+    start_line int,
+    end_line int,
+    chunk_type text,
+    score decimal,
+    hash text,
+    docstring text,
+    parameters text[],
+    return_values text[],
+    complexity int
+)
+ON CONFLICT (id)
+DO UPDATE
+SET
+    file_id       = EXCLUDED.file_id,
+    class_id      = EXCLUDED.class_id,
+    class_name    = EXCLUDED.class_name,
+    name          = EXCLUDED.name,
+    content       = EXCLUDED.content,
+    start_line    = EXCLUDED.start_line,
+    end_line      = EXCLUDED.end_line,
+    chunk_type    = EXCLUDED.chunk_type,
+    score         = EXCLUDED.score,
+    hash          = EXCLUDED.hash,
+    docstring     = EXCLUDED.docstring,
+    parameters    = EXCLUDED.parameters,
+    return_values = EXCLUDED.return_values,
+    complexity    = EXCLUDED.complexity;
+"""
+        
+        delete_related_calls_query = """
+DELETE FROM calls
+USING unnest($1::uuid[]) AS u(id)
+WHERE calls.caller_id = u.id OR calls.callee_id = u.id;
+"""
+
+        delete_related_review_query = """
+    DELETE FROM reviews
+    USING unnest($1::uuid[]) AS u(id)
+    WHERE reviews.chunk_id = u.id;
+    """
+
+        delete_related_summaries_query = """
+    DELETE FROM summaries
+    USING unnest($1::uuid[]) AS u(id)
+    WHERE summaries.chunk_id = u.id;
+    """
+
+        delete_related_queue_query = """
+DELETE FROM review_queue
+USING unnest($1::uuid[]) AS u(id)
+WHERE review_queue.chunk_id = u.id;
+"""
+
+        
+        result = await asyncio.gather(
+            db.execute(query, json.dumps(chunks)),
+            db.execute(delete_related_calls_query, ids),
+            db.execute(delete_related_review_query, ids),
+            db.execute(delete_related_summaries_query, ids),
+            db.execute(delete_related_queue_query, ids)
+        )
+        
+        self.__logger.info(f"Updated {len(result)} chunks in database for change management")
+        
+        return result

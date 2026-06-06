@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from app.controller.parse_controller import ParseController
+import traceback
 
 parse_router = APIRouter(prefix="/parse", tags=["parse"])
 
@@ -11,7 +12,16 @@ async def parse_project(project_id: str, repo_path: str):
         return parsed_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
+    
+@parse_router.post("/{project_id}/changed", response_model=dict)
+async def manage_changes(project_id: str, repo_path: str):
+    try:
+        controller = ParseController(repo_path=repo_path)
+        parsed_data = await controller.manage_changes(project_id)
+        return {"message": "Changes managed successfully", "data": parsed_data}
+    except Exception as e:
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 @parse_router.get("/search", response_model=list)
 async def search_chunks(query: str, k: int = 5):
     try:

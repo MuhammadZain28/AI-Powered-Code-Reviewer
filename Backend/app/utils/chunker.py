@@ -63,36 +63,61 @@ class Chunker():
         parser.language = LANGUAGES[self.language]
         return parser
 
-    def extract_chunks(self, node, name_map: dict = None, hash_map: dict = None):
+    def extract_chunks(self, node, chunk_map: dict = None, class_map: dict = None):
         if node.type in TARGET_NODES:
             if node.type in {"class_definition", "class_declaration"}:
-                self.current_class = uuid7()
+                self.class_name = self.get_node_name(node)
+                code = self.get_source_segment(node)
+                code_hash = self.calculate_hash(code)
+
+                if class_map:
+                    self.__logger.info(f"Processing class '{self.class_name}' for change management")
+                    data = class_map.get(self.class_name, {"id": None, "hash": None})
+    
+                    if data['id'] and data['hash'] == code_hash:
+                        self.__logger.info(f"Class '{self.class_name}' is unchanged. Skipping re-chunking.")
+                        del class_map[self.class_name]  # Remove from map to identify deleted classes later
+                        return
+                    
+                    elif data['id'] and data['hash'] != code_hash:
+                        self.__logger.info(f"Class '{self.class_name}' has changed. Re-chunking with existing ID.")
+                        self.current_class = data['id']
+                        del class_map[self.class_name]  # Remove from map to identify deleted classes later
+                    
+                    else:
+                        self.current_class = uuid7()
+                
+                else:
+                    self.current_class = uuid7()
+
                 self.inheritances = self.extract_inheritances(node)
                 self.attributes.extend(self.extract_class_attributes(node))
                 docstring = self.extract_docstring(node)
-                self.class_chunk.append(self.build_class(self.current_class, node, docstring))
+                self.class_chunk.append(self.build_class(self.current_class, node, self.class_name, code_hash, docstring))
 
             else:
                 name = self.get_node_name(node)
                 code = self.get_source_segment(node)
                 code_hash = self.calculate_hash(code)
 
-                if name_map and hash_map:
-                    prev_id, hash = name_map.get(name, {"id": None, "hash": None})
-                    if not prev_id:
-                        prev_id, name = hash_map.get(code_hash, {"id": None, "name": None})
-                        if prev_id:
-                            del name_map[name]  # remove matched name as well
-            
-                    if prev_id and hash == code_hash:
+                self.__logger.info(f"Processing chunk '{name}'")
+
+                if chunk_map:
+                    self.__logger.info(f"Processing chunk '{name}' for change management")
+                    data = chunk_map.get(name, {"id": None, "hash": None})
+
+                    if data['id'] and data['hash'] == code_hash:
                         self.__logger.info(f"Chunk '{name}' is unchanged. Skipping re-chunking.")
-                        del name_map[name]  # remove matched name to speed up future lookups
+                        del chunk_map[name]  # Remove from map to identify deleted chunks later
                         return
-                    elif prev_id and hash != code_hash:
-                        del name_map[name]  # remove old name mapping since content has changed
-                        id = prev_id
+
+                    elif data['id'] and data['hash'] != code_hash:
+                        id = data['id']
+                        del chunk_map[name]  # Remove from map to identify deleted chunks later
+
                     else:
                         id = uuid7()
+
                 else:
                     id = uuid7()
 
@@ -116,7 +141,7 @@ class Chunker():
             self.imports_modules.extend(normalized_import[1])
 
         for child in node.children:
-            self.extract_chunks(child)
+            self.extract_chunks(child, chunk_map=chunk_map, class_map=class_map)
 
     def extract_class_attributes(self, class_node):
 
@@ -196,7 +221,12 @@ class Chunker():
             if node.type in {"expression_statement"}:
 
                 assignment_expr = self.get_source_segment(node)
-                left, right = assignment_expr.split("=")
+                parts = assignment_expr.split("=")
+                if len(parts) != 2:
+                    left = parts[0].strip()
+                    right = None
+                else:
+                    left, right = parts[0].strip(), parts[1].strip()
 
                 if (left):
                     attributes.append((
@@ -349,12 +379,12 @@ class Chunker():
 
         return (calls, returns)
 
-    def chunk_code(self, name_map: dict = None, hash_map: dict = None):
+    def chunk_code(self) -> dict:
         parser = self.get_parser()
         self.source_code = self.clean_code(self.source_code)
         tree = parser.parse(bytes(self.source_code, "utf8"))
         root_node = tree.root_node
-        self.extract_chunks(root_node, name_map, hash_map)
+        self.extract_chunks(root_node)
         return {
             "classes": self.class_chunk,
             "imports": self.imports,
@@ -364,17 +394,40 @@ class Chunker():
             "import_modules": self.imports_modules
         }
 
-    def build_class(self, id, node, docstring=None):
-        self.class_name = self.get_node_name(node)
+    def chunk_change_code(self, chunk_map: dict, class_map: dict) -> dict:
+        parser = self.get_parser()
+        self.source_code = self.clean_code(self.source_code)
+        tree = parser.parse(bytes(self.source_code, "utf8"))
+        root_node = tree.root_node
+        self.__logger.info(f"chunk_map for change management: {len(chunk_map)} and class_map: {len(class_map)}")
+        self.extract_chunks(root_node, chunk_map=chunk_map, class_map=class_map)
+        print(f"After chunking, remaining chunk_map: {len(chunk_map)}, remaining class_map: {len(class_map)}")
+
+        return {
+            "classes": self.class_chunk,
+            "imports": self.imports,
+            "chunks": self.chunks,
+            "calls": self.calls,
+            "attributes": self.attributes,
+            "import_modules": self.imports_modules,
+            "class_map": class_map,
+            "chunk_map": chunk_map
+        }
+
+
+    def build_class(self, id, node, name, code_hash, docstring=None):
+        self.__logger.info(f"Building class '{name}' with hash {code_hash}")
         cls = (
-            id,                             # unique identifier for the class
-            self.file_id,                   # associate class with its file
-            self.class_name,                # human-readable class name
-            node.start_point[0] + 1,        # line numbers are 0-indexed in tree-sitter
-            node.end_point[0] + 1,          # end line of the class
-            docstring,                      # docstring for the class
-            self.inheritances               # list of parent classes
+            id,                                                     # unique identifier for the class
+            self.file_id,                                           # associate class with its file
+            name,                                                   # human-readable class name
+            node.start_point[0] + 1,                                # line numbers are 0-indexed in tree-sitter
+            node.end_point[0] + 1,                                  # end line of the class
+            docstring,                                              # docstring for the class
+            self.inheritances,                                      # list of parent classes
+            code_hash                                               # hash of the class content for quick comparisons
         )
+        self.__logger.info(f"Built class '{cls[2]}' with hash {cls[7]}")
         return cls
 
     def build_chunk(self, id, node, docstring=None, parameters=None, return_values=None, complexity=1):
