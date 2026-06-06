@@ -66,22 +66,12 @@ class ParserService:
             return ""
 
     def chunk_code(self, code: str, language: str, file_path: str, id: str) -> list:
-        chunker = Chunker(code, language, file_path, id)
-        try:
-            chunks = chunker.chunk_code()
-        except Exception as e:
+        chunker = Chunker(code, language, id)
+        chunks = chunker.chunk_code()
 
-            tb = traceback.extract_tb(e.__traceback__)
-
-            return {
-                "error": str(e),
-                "file": tb[-1].filename,
-                "line": tb[-1].lineno,
-                "function": tb[-1].name
-            }
-            chunks = []
         if not chunks:
             self.__logger.warning(f"No chunks extracted from code in language {file_path}. Returning entire file as one chunk.")
+
             return {
                 "classes": [],
                 "imports": [],
@@ -103,8 +93,11 @@ class ParserService:
                 )]}
         return chunks
 
-    def parse_project(self, project_id) -> dict:
-        code_files = self.scan_project()
+    def parse_project(self, project_id, changed_files: list = None) -> dict:
+        if changed_files is not None:
+            code_files = changed_files
+        else:
+            code_files = self.scan_project()
         project_files, project_classes, project_imports, project_chunks, project_calls, project_attributes, project_import_modules = [], [], [], [], [], [], []
 
         for file in code_files:
@@ -141,3 +134,70 @@ class ParserService:
             'attributes': project_attributes,
             'import_modules': project_import_modules
         }
+
+    def update_changed_chunks(self, chunk_map: dict, class_map: dict, files_in_db: dict):
+        modified_files, modified_chunks, modified_attributes, modified_import_modules, modified_classes, modified_imports, modified_calls = [], [], [], [], [], [], []
+
+        for file_id, info in files_in_db.items():
+            language = info['language']
+            path = info['path']
+            code = self.read_file(path)
+
+            modified_files.append((
+                file_id,
+                self.file_hash(code)
+            ))
+
+            chunked_code = self.chunk_change(code, language, path, file_id, chunk_map=chunk_map, class_map=class_map)
+
+            modified_classes.extend(chunked_code.get('classes', []))
+            modified_imports.extend(chunked_code.get('imports', []))
+            modified_chunks.extend(chunked_code.get('chunks', []))
+            modified_calls.extend(chunked_code.get('calls', []))
+            modified_attributes.extend(chunked_code.get('attributes', []))
+            modified_import_modules.extend(chunked_code.get('import_modules', []))
+
+            class_map = chunked_code.get('class_map', {})
+            chunk_map = chunked_code.get('chunk_map', {})
+
+            print(f"After processing {path}, remaining chunk_map: {len(chunk_map)}, remaining class_map: {len(class_map)}")
+
+            self.__logger.info(f"Extracted {len(chunked_code.get('chunks', []))} code chunks from {path} for change management")
+        return {
+            'files': modified_files,
+            'classes': modified_classes,
+            'imports': modified_imports,
+            'chunks': modified_chunks,
+            'calls': modified_calls,
+            'attributes': modified_attributes,
+            'import_modules': modified_import_modules
+        }
+
+    def chunk_change(self, code: str, language: str, file_path: str, id: str, chunk_map: dict, class_map: dict) -> list:
+        chunker = Chunker(code, language, id)
+        self.__logger.info(f"Chunk map for change management: {len(chunk_map)} and class map: {len(class_map)}")
+        chunks = chunker.chunk_change_code(chunk_map=chunk_map, class_map=class_map)
+
+        if not chunks:
+            self.__logger.warning(f"No chunks extracted from code in language {file_path}. Returning entire file as one chunk.")
+
+            return {
+                "classes": [],
+                "imports": [],
+                "calls": [],
+                "attributes": [],
+                "chunks": [(
+                    uuid7(),
+                    id,
+                    None,
+                    f"{file_path.split('/')[-1]}",
+                    code,
+                1,
+                code.count('\n') + 1,
+                'file',
+                self.file_hash(code),
+                None,
+                None,
+                None
+                )]}
+        return chunks
