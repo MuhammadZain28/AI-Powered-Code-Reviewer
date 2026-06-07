@@ -112,26 +112,26 @@ const ProjectDetails = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <Card>
             <div className="text-center">
-              <p className="text-sm text-gray-600">Total Files</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.total_files || 0}</p>
+              <p className="text-sm">Total Files</p>
+              <p className="text-2xl font-bold">{stats.file_count || 0}</p>
             </div>
           </Card>
           <Card>
             <div className="text-center">
-              <p className="text-sm text-gray-600">Code Chunks</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.total_chunks || 0}</p>
+              <p className="text-sm">Code Chunks</p>
+              <p className="text-2xl font-bold">{stats.chunk_count || 0}</p>
             </div>
           </Card>
           <Card>
             <div className="text-center">
-              <p className="text-sm text-gray-600">Reviews</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.total_reviews || 0}</p>
+              <p className="text-sm">Reviews</p>
+              <p className="text-2xl font-bold">{stats.review_count || 0}</p>
             </div>
           </Card>
           <Card>
             <div className="text-center">
-              <p className="text-sm text-gray-600">Issues Found</p>
-              <p className="text-2xl font-bold text-red-600">{stats.total_issues || 0}</p>
+              <p className="text-sm">Issues Found</p>
+              <p className="text-2xl font-bold text-red-600">{stats.issues_count || 0}</p>
             </div>
           </Card>
         </div>
@@ -152,9 +152,6 @@ const ProjectDetails = () => {
                     File Path
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Size
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Chunks
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -169,13 +166,10 @@ const ProjectDetails = () => {
                       {file.path}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
-                      {formatFileSize(file.size)}
+                      {file.file_count || 0}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
-                      {file.chunk_count || 0}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {formatDate(file.modified_at)}
+                      {file.created_at.split('T')[0]}
                     </td>
                   </tr>
                 ))}

@@ -9,7 +9,11 @@ export const reviewService = {
   getFileReviews: (fileId) => api.get(`/reviews/file/${fileId}`),
   
   // Get review summary
-  getReviewSummary: (projectId) => api.get(`/reviews/summary/${projectId}`),
+  getReviewSummary: async (projectId) => {  
+    const response = await api.get(`/review/summary/${projectId}`)
+    console.log("Review summary response:", response)
+    return response
+  },
   
   // Trigger AI review
   triggerReview: (fileId, contextLines = 10) => 

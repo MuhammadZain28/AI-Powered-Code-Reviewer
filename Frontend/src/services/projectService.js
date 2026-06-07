@@ -1,5 +1,7 @@
 import api from './api'
 
+const API_BASE_URL = 'http://127.0.0.1:8000/api/v1'
+
 // Mock data for development
 const mockProjects = [
   {
@@ -42,7 +44,8 @@ export const projectService = {
   getAllProjects: async () => {
     try {
       // Try to fetch from API first
-      const response = await api.get('/projects')
+      const response = await api.get(`/projects`)
+      console.log("API response for projects:", response)  // Debugging statement
       return Array.isArray(response) ? response : []
     } catch (error) {
       // Return mock data if API fails (for development)
@@ -55,6 +58,7 @@ export const projectService = {
   getProject: async (projectId) => {
     try {
       const response = await api.get(`/projects/${projectId}`)
+      console.log("API response for project:", response)  // Debugging statement
       return response
     } catch (error) {
       // Return mock project if API fails
@@ -120,6 +124,7 @@ export const projectService = {
   getProjectFiles: async (projectId) => {
     try {
       const response = await api.get(`/projects/${projectId}/files`)
+      console.log("API response for project files:", response)  // Debugging statement
       return Array.isArray(response) ? response : []
     } catch (error) {
       console.warn('Using mock files data')

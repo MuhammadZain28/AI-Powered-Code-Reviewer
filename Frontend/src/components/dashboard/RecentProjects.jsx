@@ -44,7 +44,7 @@ const RecentProjects = ({ projects }) => {
           >
             <div className="flex justify-between items-center">
               <div>
-                <h4 className="font-medium text-gray-900">{project.name}</h4>
+                <h4 className="font-medium">{project.name}</h4>
                 <p className="text-sm text-gray-500 mt-1">
                   Updated {formatDate(project.updated_at || project.created_at)}
                 </p>

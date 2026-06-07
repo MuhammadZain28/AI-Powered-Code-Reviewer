@@ -11,7 +11,7 @@ import toast from 'react-hot-toast'
 import { PlusIcon, SearchIcon, FilterIcon } from '@heroicons/react/outline'
 
 const Projects = () => {
-  const { projects, loading, createProject, deleteProject } = useProjects()
+  const { projects, loading, createProject, deleteProject, setCurrentProject } = useProjects()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
@@ -116,6 +116,7 @@ const Projects = () => {
               key={project.id}
               project={project}
               onDelete={handleDeleteProject}
+              onSelect={setCurrentProject}
             />
           ))}
         </div>

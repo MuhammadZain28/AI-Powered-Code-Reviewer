@@ -12,7 +12,7 @@ const Sidebar = () => {
   ]
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 min-h-screen">
+    <aside className="w-64 border-r border-gray-200 min-h-screen">
       <nav className="mt-5 px-2">
         {navigation.map((item) => (
           <NavLink

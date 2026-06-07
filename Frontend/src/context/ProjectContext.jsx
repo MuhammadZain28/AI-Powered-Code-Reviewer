@@ -20,7 +20,7 @@ export const ProjectProvider = ({ children }) => {
     setLoading(true)
     try {
       const data = await projectService.getAllProjects()
-      // Ensure data is an array
+      console.log("Loaded projects:", data)  // Debugging statement
       setProjects(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Failed to load projects:', error)
