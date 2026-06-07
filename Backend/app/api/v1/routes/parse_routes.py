@@ -22,6 +22,7 @@ async def manage_changes(project_id: str, repo_path: str):
     except Exception as e:
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+
 @parse_router.get("/search", response_model=list)
 async def search_chunks(query: str, k: int = 5):
     try:

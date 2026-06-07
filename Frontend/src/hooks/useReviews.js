@@ -33,10 +33,10 @@ export const useReviews = (projectId) => {
     }
   }, [projectId])
 
-  const triggerReview = useCallback(async (fileId, contextLines = 10) => {
+  const triggerReview = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await reviewService.triggerReview(fileId, contextLines)
+      const result = await reviewService.triggerReview()
       toast.success('Review triggered successfully')
       await loadReviews()
       return result

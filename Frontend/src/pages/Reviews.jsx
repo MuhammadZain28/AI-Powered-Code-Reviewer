@@ -8,9 +8,11 @@ import { getSeverityColor } from '../utils/statusColors'
 import { formatDate } from '../utils/helpers'
 import ReactMarkdown from 'react-markdown'
 import Button from '../components/ui/Button'
+import { useReviews } from '../hooks/useReviews'
 
 const Reviews = () => {
   const { projects, currentProject, setCurrentProject } = useProjects()
+  const { triggerReview } = useReviews()
   const [reviews, setReviews] = useState([])
   const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -89,8 +91,8 @@ const Reviews = () => {
         <h2 className="mt-1 text-lg font-medium">
           AI-powered analysis for {currentProject.name}
         </h2>
-        <Button onClick={loadReviews} disabled={loading}>
-          {loading ? 'Refreshing...' : 'Review Project'}
+        <Button onClick={() => triggerReview()} disabled={loading}>
+          {loading ? 'Triggering Review...' : 'Trigger Review'}
         </Button>
       </div>
       <button

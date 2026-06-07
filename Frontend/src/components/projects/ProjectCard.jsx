@@ -10,12 +10,13 @@ import { FolderIcon, CodeIcon, ChatAltIcon, DotsVerticalIcon } from '@heroicons/
 
 const ProjectCard = ({ project, onDelete, onSelect }) => {
   const [showMenu, setShowMenu] = React.useState(false)
+  
 
   return (
     <Card className="hover:border-dark-border transition-all duration-200 group">
       <div className="relative">
         <div className="flex justify-between items-start">
-          <Link to={`/projects/${project.id}`} onClick={onSelect(project)} className="flex-1">
+          <Link to={`/projects/${project.id}`} onClick={() => {onSelect(project)}} className="flex-1">
             <div className="flex items-center space-x-3 mb-3">
               <div className="p-2 bg-primary-600/10 rounded-lg">
                 <FolderIcon className="w-6 h-6 text-primary-500" />
@@ -25,7 +26,7 @@ const ProjectCard = ({ project, onDelete, onSelect }) => {
                   {project.name}
                 </h3>
                 <p className="text-sm text-dark-textSecondary mt-0.5">
-                  Updated {formatDate(project.created_at)}
+                  Updated {project.created_at.split('T')[0]} {/* Show only date part */}
                 </p>
               </div>
             </div>

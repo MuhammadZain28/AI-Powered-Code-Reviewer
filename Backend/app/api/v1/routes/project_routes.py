@@ -1,13 +1,34 @@
 from fastapi import APIRouter, HTTPException
 from app.controller.project_controller import ProjectController
+from pydantic import BaseModel
+from typing import List, Optional
+
+class ProjectCreate(BaseModel):
+    name: str
+    description: str
+    repo_path: str
+    features: Optional[str] = None
+    modules: Optional[str] = None
+    frontend: Optional[str] = None
+    backend: Optional[str] = None
+    technologies: Optional[str] = None
 
 project_router = APIRouter(prefix="/projects", tags=["projects"])
 
 @project_router.post("/", response_model=dict)
-async def create_project(name: str, description: str, repo_path: str, features: str = None, modules: str = None, frontend: str = None, backend: str = None, technologies: str = None):
+async def create_project(project: ProjectCreate):
     try:
         controller = ProjectController()
-        project = await controller.create_project(name, description, repo_path, features, modules, frontend, backend, technologies)
+        project = await controller.create_project(
+            name=project.name,
+            description=project.description,
+            repo_path=project.repo_path,
+            features=project.features,
+            modules=project.modules,
+            frontend=project.frontend,
+            backend=project.backend,
+            technologies=project.technologies
+        )
         return {"message": "Project created successfully", "project_id": project}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -19,7 +40,7 @@ async def select_project(project_id: str):
         project = await controller.get_project(project_id)
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
-        return {"id": project['id'], "name": project['name'], "path": project['path'], "description": project['description']}
+        return project
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -28,7 +49,7 @@ async def select_all_projects():
     try:
         controller = ProjectController()
         projects = await controller.get_all_projects()
-        return [{"id": project['id'], "name": project['name'], "path": project['path'], "description": project['description']} for project in projects]
+        return projects
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     

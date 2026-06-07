@@ -370,7 +370,7 @@ class Chunker():
 
             elif curr.type == "return_statement":
                 return_value = self.get_source_segment(curr)
-                returns.extend(return_value.split("return", 1)[-1].strip())
+                returns.append(return_value.split("return", 1)[-1].strip())
 
             for child in curr.children:
                 traverse(child)

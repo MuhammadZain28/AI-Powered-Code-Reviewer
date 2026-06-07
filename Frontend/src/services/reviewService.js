@@ -16,8 +16,8 @@ export const reviewService = {
   },
   
   // Trigger AI review
-  triggerReview: (fileId, contextLines = 10) => 
-    api.post('/review/trigger', { file_id: fileId, context_lines: contextLines }),
+  triggerReview: () => 
+    api.post('/review'),
   
   // Update review status
   updateReviewStatus: (reviewId, status, comment = '') => 

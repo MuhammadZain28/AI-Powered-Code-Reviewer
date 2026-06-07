@@ -2,8 +2,11 @@ import api from './api'
 
 export const parseService = {
   // Start parsing a repository
-  parseRepository: (projectId, repoUrl, branch = 'main') => 
-    api.post('/parse/repository', { project_id: projectId, repo_url: repoUrl, branch }),
+  parseRepository: (projectId, repo_path) => 
+    api.post(`/parse/${projectId}`, null, { params: { repo_path } }),
+  
+  parseChanges: (projectId, repo_path) => 
+    api.post(`/parse/${projectId}/changed`, null, { params: { repo_path } }),
   
   // Get parsing status
   getParsingStatus: (parseId) => api.get(`/parse/status/${parseId}`),

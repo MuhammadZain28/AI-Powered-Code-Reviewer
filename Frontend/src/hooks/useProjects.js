@@ -10,7 +10,8 @@ export const useProjects = () => {
     setCurrentProject,
     createProject,
     updateProject,
-    deleteProject
+    deleteProject,
+    setCurrentProjectWithParse
   } = useProject()
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export const useProjects = () => {
     createProject,
     updateProject,
     deleteProject,
+    setCurrentProjectWithParse,
     refreshProjects: loadProjects
   }
 }

@@ -1,7 +1,5 @@
 import api from './api'
 
-const API_BASE_URL = 'http://127.0.0.1:8000/api/v1'
-
 // Mock data for development
 const mockProjects = [
   {
@@ -71,7 +69,9 @@ export const projectService = {
   // Create project
   createProject: async (projectData) => {
     try {
+      console.log("Creating project with data:", projectData)  // Debugging statement
       const response = await api.post('/projects', projectData)
+      console.log("API response for project creation:", response)  // Debugging statement
       return response
     } catch (error) {
       // Mock creation for development

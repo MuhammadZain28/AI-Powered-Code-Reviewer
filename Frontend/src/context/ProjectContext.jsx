@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react'
 import { projectService } from '../services/projectService'
+import { parseService } from '../services/parseService'
 
 const ProjectContext = createContext()
 
@@ -74,6 +75,19 @@ export const ProjectProvider = ({ children }) => {
     }
   }
 
+  const setCurrentProjectWithParse = async (project) => {
+    setCurrentProject(project)
+    console.log("Selected project:", project)  // Debugging statement
+    if (project?.path) {
+      try {
+        console.log("Parsing project with path:", project.path)  // Debugging statement
+        await parseService.parseChanges(project.id, project.path)
+      } catch (error) {
+        console.error('Failed to parse changes:', error)
+      }
+    }
+  }
+
   return (
     <ProjectContext.Provider value={{
       projects: Array.isArray(projects) ? projects : [], // Always return array
@@ -81,6 +95,7 @@ export const ProjectProvider = ({ children }) => {
       loading,
       loadProjects,
       setCurrentProject,
+      setCurrentProjectWithParse,
       createProject,
       updateProject,
       deleteProject

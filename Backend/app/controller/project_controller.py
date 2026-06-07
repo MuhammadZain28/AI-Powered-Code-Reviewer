@@ -21,7 +21,7 @@ class ProjectController:
     async def get_all_projects(self):
         project = Project(id=None, name="", path="", description="")
         projects_data = await project.fetch_all()
-        print("Fetched projects:", projects_data)  # Debugging statement
+
         return projects_data
     
     async def get_project_files(self, project_id: str):

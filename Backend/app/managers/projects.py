@@ -46,14 +46,15 @@ class Project:
     async def fetch(self):
         if self.id is not None:
             db = Database()
-            query = "SELECT p.id, p.name, p.path, p.description FROM projects p WHERE p.id = $1"
+            query = "SELECT p.id, p.name, p.path, p.description, p.created_at FROM projects p WHERE p.id = $1"
             result = await db.fetchrow(query, self.id)
             if result:
                 return {
                     "id": result['id'],
                     "name": result['name'],
                     "path": result['path'],
-                    "description": result['description']
+                    "description": result['description'],
+                    "created_at": result['created_at']
                 }
             else:
                 self.__logger.warning(f"Project with ID {self.id} not found in the database.")
@@ -64,9 +65,9 @@ class Project:
 
     async def fetch_all(self):
         db = Database()
-        query = "SELECT id, name, path, description FROM projects"
+        query = "SELECT id, name, path, description, created_at FROM projects"
         result = await db.fetch(query)
-        return [{"id": p['id'], "name": p['name'], "path": p['path'], "description": p['description']} for p in result]
+        return [{"id": p['id'], "name": p['name'], "path": p['path'], "description": p['description'], "created_at": p['created_at']} for p in result]
 
     async def fetch_files(self):
         if self.id is not None:

@@ -72,6 +72,17 @@ export const useParse = (projectId) => {
     }
   }, [projectId])
 
+  const parseChanges = useCallback(async (project_id, repo_path) => {
+    try {
+      const result = await parseService.parseChanges(project_id, repo_path)
+      toast.success('Changes parsed successfully')
+      return result
+    } catch (error) {
+      toast.error(error.message || 'Failed to parse changes')
+      throw error
+    }
+  }, [projectId])
+
   return {
     parsing,
     status,
@@ -82,6 +93,7 @@ export const useParse = (projectId) => {
     getParsingStatus,
     loadChunks,
     loadEmbeddingStats,
+    parseChanges,
     reindex
   }
 }
