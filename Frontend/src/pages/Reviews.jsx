@@ -6,6 +6,8 @@ import Badge from '../components/ui/Badge'
 import Loader from '../components/ui/Loader'
 import { getSeverityColor } from '../utils/statusColors'
 import { formatDate } from '../utils/helpers'
+import ReactMarkdown from 'react-markdown'
+import Button from '../components/ui/Button'
 
 const Reviews = () => {
   const { projects, currentProject, setCurrentProject } = useProjects()
@@ -66,12 +68,7 @@ const Reviews = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Code Reviews</h1>
-          <p className="text-gray-600 mt-1">
-            AI-powered analysis for {currentProject.name}
-          </p>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Code Reviews</h1>
         <select
           className="input w-64"
           value={currentProject?.id || ''}
@@ -87,6 +84,14 @@ const Reviews = () => {
             </option>
           ))}
         </select>
+      </div>
+      <div className="flex justify-between items-center">
+        <h2 className="mt-1 text-lg font-medium">
+          AI-powered analysis for {currentProject.name}
+        </h2>
+        <Button onClick={loadReviews} disabled={loading}>
+          {loading ? 'Refreshing...' : 'Review Project'}
+        </Button>
       </div>
       <button
         onClick={() => setCurrentProject(null)}
@@ -135,43 +140,61 @@ const Reviews = () => {
           <div className="space-y-4">
             {reviews.map((review) => (
               <div
-                key={review.id}
-                className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                key={review.path}
+                className=""
               >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3">
-                      <Badge variant={getSeverityColor(review.severity)}>
-                        {review.severity}
-                      </Badge>
-                      <Badge variant="info">{review.type}</Badge>
-                      <span className="text-sm text-gray-500">
-                        {formatDate(review.created_at)}
-                      </span>
+                <h2 className="text-xl font-bold">{review.path}</h2>
+                {review.chunks.map((review_chunks) => (
+                  <div key={review_chunks.function} className="flex flex-col gap-2 p-4 border-b border-gray-200">
+                    <div className="my-4">
+                      <p className="mt-1 text-md"><span className="font-medium mr-2">Name:</span> {review_chunks.function}({review_chunks.parameters?.join(', ') || ''})</p>
+                      {review_chunks.class && (
+                        <p className="mt-1 text-md"><span className="font-medium mr-2">Class:</span> {review_chunks.class}</p>
+                      )}
+                      <p className="mt-1 text-md"><span className="font-medium mr-2">Lines:</span> {review_chunks.start} - {review_chunks.end}</p>
+                      {review_chunks.return_values && (
+                        <p className="mt-1 text-md"><span className="font-medium mr-2">Return Values:</span> {JSON.stringify(review_chunks.return_values)}</p>
+                      )}
+                      <p className="mt-1 text-md"><span className="font-medium">Purpose:</span></p> 
+                      <p className="mt-1 text-sm">{review_chunks.purpose}</p>
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-900 mt-2">
-                      {review.title}
-                    </h3>
-                    <p className="text-gray-600 mt-1 line-clamp-2">
-                      {review.description}
-                    </p>
-                    <p className="text-sm text-gray-500 mt-2">
-                      File: {review.file_path}
-                    </p>
-                  </div>
-                  <div className="flex space-x-2">
-                    <select
-                      value={review.status}
-                      onChange={(e) => handleUpdateStatus(review.id, e.target.value)}
-                      className="text-sm border rounded px-2 py-1"
-                    >
-                      <option value="open">Open</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="resolved">Resolved</option>
-                      <option value="wont_fix">Won't Fix</option>
-                    </select>
-                  </div>
+                    {review_chunks.issues.map((issues) => (
+                      <div key={issues.review_id} className="flex justify-between items-start border border-gray-200 rounded-lg p-4 hover:shadow-md shadow-sm transition-shadow">
+                        <div className="flex flex-col gap-2 w-full  ">
+                          <div className="flex items-center justify-between space-x-3 w-full">
+                            <Badge className={getSeverityColor(issues.severity)}>
+                              {issues.severity}
+                            </Badge>
+                            <Badge variant="info">{issues.category}</Badge>
+                            <span className="text-sm">
+                              {issues.created_at.split('T')[0]}
+                            </span>
+                          </div>
+                          <p className="text-gray-600 mt-1 text-sm flex flex-col">
+                            <span className="font-medium">Review:</span>
+                            <ReactMarkdown>{issues.review}</ReactMarkdown>
+                          </p>
+                          <p className="text-gray-600 mt-1 text-sm flex flex-col">
+                            <span className="font-medium">Suggested Fix:</span>
+                            <ReactMarkdown>{issues.suggested_fix}</ReactMarkdown>
+                          </p>
+                        </div>
+                        {/* <div className="flex space-x-2">
+                          <select
+                            value={review.status}
+                            onChange={(e) => handleUpdateStatus(review.id, e.target.value)}
+                            className="text-sm border rounded px-2 py-1"
+                          >
+                            <option value="open">Open</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="resolved">Resolved</option>
+                            <option value="wont_fix">Won't Fix</option>
+                          </select>
+                        </div> */}
+                      </div>
+                    ))}
                 </div>
+                ))}
               </div>
             ))}
           </div>

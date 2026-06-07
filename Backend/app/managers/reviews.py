@@ -134,3 +134,57 @@ Output valid JSON only.
                 "low_issues": row['low_count']
             }
         return summary
+    
+    async def get_project_reviews(self, project_id: str, page: int = 1, limit: int = 50):
+        db = Database()
+        query = """
+SELECT
+    f.path,
+
+    jsonb_agg(
+        DISTINCT jsonb_build_object(
+            'purpose', s.purpose,
+            'module', s.module,
+            'function', c.name,
+            'class', c.class_name,
+            'start', c.start_line,
+            'end', c.end_line,
+            'parameters', c.parameters,
+            'return_values', c.return_values,
+            'issues', COALESCE(issues.issues, '[]'::jsonb)
+        )
+    ) AS chunks
+
+FROM files f
+
+JOIN chunks c ON c.file_id = f.id
+JOIN summaries s ON s.chunk_id = c.id
+
+LEFT JOIN LATERAL (
+    SELECT jsonb_agg(
+        jsonb_build_object(
+            'review_id', r2.id,
+            'severity', r2.severity,
+            'category', r2.category,
+            'review', r2.review,
+            'suggested_fix', r2.suggested_fix,
+            'created_at', r2.created_at
+        )
+    ) AS issues
+    FROM reviews r2
+    WHERE r2.chunk_id = c.id
+) issues ON true
+
+WHERE f.project_id = $1
+
+GROUP BY f.path;
+        """
+        rows = await db.fetch(query, project_id)
+        reviews = []
+        for row in rows:
+            reviews.append({
+            "path": row['path'],
+            "chunks": json.loads(row['chunks'])
+        })
+            
+        return reviews

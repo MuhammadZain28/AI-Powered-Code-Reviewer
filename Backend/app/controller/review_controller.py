@@ -49,3 +49,7 @@ class ReviewController:
     async def get_reviews_summary(self, project_id: str):
         summary = await self.review_manager.get_review_summary(project_id)
         return summary
+    
+    async def get_project_reviews(self, project_id: str, page: int = 1, limit: int = 50):
+        reviews = await self.review_manager.get_project_reviews(project_id, page, limit)
+        return reviews

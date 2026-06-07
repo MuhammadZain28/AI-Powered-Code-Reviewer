@@ -20,3 +20,12 @@ async def get_reviews_summary(project_id: str):
         return summary
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@review_router.get("/project/{project_id}", response_model=list)
+async def get_project_reviews(project_id: str, page: int = 1, limit: int = 50):
+    try:
+        controller = ReviewController()
+        reviews = await controller.get_project_reviews(project_id, page, limit)
+        return reviews
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
