@@ -21,8 +21,19 @@ class ProjectController:
     async def get_all_projects(self):
         project = Project(id=None, name="", path="", description="")
         projects_data = await project.fetch_all()
+        print("Fetched projects:", projects_data)  # Debugging statement
         return projects_data
+    
+    async def get_project_files(self, project_id: str):
+        project = Project(id=project_id, name="", path="", description="")
+        files = await project.fetch_files()
+        return files
 
     async def delete_project(self, project_id: str):
         project = Project(id=project_id, name="", path="", description="")
         return await project.delete()
+    
+    async def project_stats(self, project_id: str):
+        project = Project(id=project_id, name="", path="", description="")
+        stats = await project.fetch_stats(project_id)
+        return stats

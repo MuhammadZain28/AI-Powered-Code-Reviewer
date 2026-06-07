@@ -52,7 +52,7 @@ class Review:
     async def fetch_chunk_context(self, chunk_id):
         db = Database()
         result = []
-        query = "SELECT public.get_function_context($1);"
+        query = "SELECT public.get_function_context($1::uuid[]);"
         record = await db.fetch(query, chunk_id)
 
         print(f"Fetched chunk context from database for chunk_id {chunk_id}: {len(record)}")
@@ -96,11 +96,41 @@ Output valid JSON only.
     async def build_queue(self, review_data: list):
         db = Database()
         
-        result = await db.copy_to_table('review_queue', data=review_data, columns=['chunk_id', 'priority', 'updated', 'status'])
+        result = await db.copy_to_table('review_queue', data=review_data, columns=['chunk_id', 'priority', 'updated_at', 'status'])
         return result
+    
+    async def fetch_pending_reviews(self):
+        db = Database()
+        query = "SELECT chunk_id FROM review_queue WHERE status = 'pending' ORDER BY priority DESC, updated_at ASC;"
+        rows = await db.fetch(query)
+        return [row['chunk_id'] for row in rows]
     
     async def delete_existing_reviews(self, chunk_ids: list):
         db = Database()
         query = "DELETE FROM reviews WHERE chunk_id = ANY($1);"
         result = await db.execute(query, chunk_ids)
         return result
+    
+    async def get_review_summary(self, project_id: str):
+        db = Database()
+        query = """
+            SELECT 
+                COUNT(*) AS count,
+                COUNT(*) FILTER (WHERE severity = 'High') AS critical_count,
+                COUNT(*) FILTER (WHERE severity = 'Medium') AS medium_count,
+                COUNT(*) FILTER (WHERE severity = 'Low') AS low_count
+            FROM reviews r
+            JOIN chunks c ON r.chunk_id = c.id
+            JOIN files f ON c.file_id = f.id
+            WHERE f.project_id = $1
+        """
+        rows = await db.fetch(query, project_id)
+        summary = {}
+        for row in rows:
+            summary = {
+                "total_issues": row['count'],
+                "critical_issues": row['critical_count'],
+                "medium_issues": row['medium_count'],
+                "low_issues": row['low_count']
+            }
+        return summary

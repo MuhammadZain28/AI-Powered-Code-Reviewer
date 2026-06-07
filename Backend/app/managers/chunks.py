@@ -1,6 +1,7 @@
 import asyncio
+from datetime import datetime, timezone
 import json
-
+from app.managers.reviews import Review
 from app.managers.database import Database
 from app.utils.logger import get_logger
 class Chunk:
@@ -92,9 +93,13 @@ WHERE embedding_id = ANY($1::bigint[])
 
         chunks = []
         ids = []
+        queue = []
 
         for chunk in changed_chunks:
             ids.append(str(chunk[0]))
+            if chunk[9] > 15:
+                queue.append((chunk[0], chunk[9], datetime.now(), "pending"))
+
             chunks.append({
                 "id": str(chunk[0]),
                 "file_id": str(chunk[1]),
@@ -192,7 +197,8 @@ USING unnest($1::uuid[]) AS u(id)
 WHERE review_queue.chunk_id = u.id;
 """
 
-        
+        review_manager = Review()
+
         result = await asyncio.gather(
             db.execute(query, json.dumps(chunks)),
             db.execute(delete_related_calls_query, ids),
@@ -201,6 +207,8 @@ WHERE review_queue.chunk_id = u.id;
             db.execute(delete_related_queue_query, ids)
         )
         
-        self.__logger.info(f"Updated {len(result)} chunks in database for change management")
+        record = await review_manager.build_queue(queue)
+    
+        self.__logger.info(f"Updated {len(result)} chunks in database for change management. Queue records inserted: {record}")
         
         return result

@@ -154,8 +154,7 @@ class ParseController:
         imports.extend(modified_data['imports'])
         attributes.extend(modified_data['attributes'])
         import_modules.extend(modified_data['import_modules'])
-        
-
+        calls.extend(modified_data['calls'])
         await self.copy_table_to_database(files, imports, classes, calls, chunks, attributes, import_modules, project_id)
 
         return {

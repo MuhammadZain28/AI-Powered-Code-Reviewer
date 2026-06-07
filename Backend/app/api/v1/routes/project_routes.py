@@ -19,7 +19,7 @@ async def select_project(project_id: str):
         project = await controller.get_project(project_id)
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
-        return {"id": project.id, "name": project.name, "path": project.path, "description": project.description, "files": project.files}
+        return {"id": project['id'], "name": project['name'], "path": project['path'], "description": project['description']}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -28,7 +28,16 @@ async def select_all_projects():
     try:
         controller = ProjectController()
         projects = await controller.get_all_projects()
-        return [{"id": project['id'], "name": project['name'], "path": project['path'], "description": project['description'], "files": project['files']} for project in projects]
+        return [{"id": project['id'], "name": project['name'], "path": project['path'], "description": project['description']} for project in projects]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@project_router.get("/{project_id}/files", response_model=list)
+async def get_project_files(project_id: str):
+    try:
+        controller = ProjectController()
+        files = await controller.get_project_files(project_id)
+        return files
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -40,5 +49,14 @@ async def delete_project(project_id: str):
         if not success:
             raise HTTPException(status_code=404, detail="Project not found")
         return {"message": "Project deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@project_router.get("/{project_id}/stats", response_model=dict)
+async def project_stats(project_id: str):
+    try:
+        controller = ProjectController()
+        stats = await controller.project_stats(project_id)
+        return stats
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

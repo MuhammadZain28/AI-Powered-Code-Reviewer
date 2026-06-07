@@ -16,13 +16,16 @@ class ReviewController:
         async with self.semahphore:
             return await self.llm_client.get_completion(chunk['message'], id=chunk['id'])
 
-    async def review_code(self, file_id):
+    async def review_code(self):
         start_time = time.time()
-        messages = await self.review_manager.fetch_chunk_context(file_id)
+        chunk_ids = await self.review_manager.fetch_pending_reviews()
+        if not chunk_ids:
+            return {"message": "No pending reviews found."}
+        messages = await self.review_manager.fetch_chunk_context(chunk_ids)
         if not messages:
             return {"error": "No chunk found for the given chunk ID."}
 
-        print(f"Fetched code chunk for {file_id}: {type(messages)}")
+        print(f"Fetched code chunk for {chunk_ids}: {len(messages)}")
         end_time = time.time()
 
         print(f"Prepared review context in {end_time - start_time:.2f} seconds.")
@@ -42,3 +45,7 @@ class ReviewController:
         _ = await self.review_manager.insert(review_result)
 
         return {"message": "Success", "review": review_result}
+    
+    async def get_reviews_summary(self, project_id: str):
+        summary = await self.review_manager.get_review_summary(project_id)
+        return summary

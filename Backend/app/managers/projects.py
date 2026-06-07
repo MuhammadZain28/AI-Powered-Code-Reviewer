@@ -46,15 +46,15 @@ class Project:
     async def fetch(self):
         if self.id is not None:
             db = Database()
-            query = "SELECT p.id, p.name, p.path, p.description, f.path FROM projects p JOIN files f ON p.id = f.project_id WHERE p.id = $1"
-            result = await db.fetch(query, self.id)
+            query = "SELECT p.id, p.name, p.path, p.description FROM projects p WHERE p.id = $1"
+            result = await db.fetchrow(query, self.id)
             if result:
-                self.id = result[0]['id']
-                self.name = result[0]['name']
-                self.path = result[0]['path']
-                self.description = result[0]['description']
-                self.files = [r['path'] for r in result]
-                return self
+                return {
+                    "id": result['id'],
+                    "name": result['name'],
+                    "path": result['path'],
+                    "description": result['description']
+                }
             else:
                 self.__logger.warning(f"Project with ID {self.id} not found in the database.")
                 return None
@@ -64,8 +64,36 @@ class Project:
 
     async def fetch_all(self):
         db = Database()
-        query = "SELECT * FROM projects"
+        query = "SELECT id, name, path, description FROM projects"
         result = await db.fetch(query)
-        return [Project(id=p['id'], name=p['name'], path=p['path'], description=p['description']) for p in result]
+        return [{"id": p['id'], "name": p['name'], "path": p['path'], "description": p['description']} for p in result]
 
+    async def fetch_files(self):
+        if self.id is not None:
+            db = Database()
+            query = "SELECT files.id, files.path, COUNT(*) as file_count, files.created_at FROM files JOIN chunks ON files.id = chunks.file_id WHERE files.project_id = $1 GROUP BY files.path, files.created_at, files.id"
+            result = await db.fetch(query, self.id)
+            return [{"id": r['id'], "path": r['path'], "file_count": r['file_count'], "created_at": r['created_at']} for r in result]
+        else:
+            self.__logger.warning("Attempted to retrieve files for a project that does not exist in the database.")
+            return []
         
+    async def fetch_stats(self, project_id: str):
+        db = Database()
+        query = """
+            SELECT COUNT(DISTINCT files.id) AS file_count,
+                   COUNT(DISTINCT chunks.id) AS chunk_count,
+                   COUNT(DISTINCT reviews.id) AS review_count
+            FROM projects
+            LEFT JOIN files ON projects.id = files.project_id
+            LEFT JOIN chunks ON files.id = chunks.file_id
+            LEFT JOIN reviews ON chunks.id = reviews.chunk_id
+            WHERE projects.id = $1
+        """
+        result = await db.fetchrow(query, project_id)
+        return {
+            "file_count": result['file_count'],
+            "chunk_count": result['chunk_count'],
+            "review_count": result['review_count'],
+            "issues_count": result['review_count']  # Assuming each review corresponds to an issue
+        }
