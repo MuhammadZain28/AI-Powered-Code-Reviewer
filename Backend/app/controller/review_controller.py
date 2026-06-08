@@ -10,7 +10,7 @@ class ReviewController:
         self.llm_client = LLMClient()
         self.chunk_manager = Chunk()
         self.review_manager = Review()
-        self.semahphore = asyncio.Semaphore(5)
+        self.semahphore = asyncio.Semaphore(4)
 
     async def batch_reviews(self, chunk):
         async with self.semahphore:
@@ -19,13 +19,13 @@ class ReviewController:
     async def review_code(self):
         start_time = time.time()
         chunk_ids = await self.review_manager.fetch_pending_reviews()
-        if not chunk_ids:
+        
+        if type(chunk_ids) == list and len(chunk_ids) == 0:
             return {"message": "No pending reviews found."}
         messages = await self.review_manager.fetch_chunk_context(chunk_ids)
         if not messages:
             return {"error": "No chunk found for the given chunk ID."}
 
-        print(f"Fetched code chunk for {chunk_ids}: {len(messages)}")
         end_time = time.time()
 
         print(f"Prepared review context in {end_time - start_time:.2f} seconds.")
@@ -43,6 +43,8 @@ class ReviewController:
         start_time = time.time()
 
         _ = await self.review_manager.insert(review_result)
+        _ = await self.review_manager.mark_reviews_completed(chunk_ids)
+
 
         return {"message": "Success", "review": review_result}
     

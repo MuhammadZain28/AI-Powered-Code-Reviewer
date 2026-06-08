@@ -15,8 +15,15 @@ class Review:
     def flatten_reviews(self, data: dict):
         chunk_rows = []
         issue_rows = []
-
         for item in data:
+
+            if isinstance(item, str):
+                print(f"Skipping error: {item}")
+                continue
+
+            if not isinstance(item, dict):
+                continue
+
             # each item is like: {chunk_id: {...}}
             for chunk_id, value in item.items():
 
@@ -43,6 +50,7 @@ class Review:
         db = Database()
 
         summary, reviews = self.flatten_reviews(review_data)
+        
         result = await asyncio.gather(
             db.copy_to_table("summaries", data=summary, columns=["chunk_id", "purpose", "module"]),
             db.copy_to_table("reviews", data=reviews, columns=["chunk_id", "severity", "category", "review", "suggested_fix"])
@@ -60,7 +68,6 @@ class Review:
         if record:
             for row in record:
                 data = row['get_function_context']
-                print(f"Processing chunk context data: {data}")
                 result.append({'id': data[0], 'message': self.build_message(json.loads(data[1]))})
 
             return result
@@ -68,8 +75,8 @@ class Review:
 
     
     def build_message(self, review_data: dict):
-        system_prompt = """
-Your task is to review code in the context of the entire project, not in isolation.
+        system_prompt = """or
+Your task is to review code in the context of the entire project, not in isolation. Give purpose and module based on the project context for Every Function or Chunk.
 
 Output should be in JSON format with the following structure:
 {
@@ -101,13 +108,19 @@ Output valid JSON only.
     
     async def fetch_pending_reviews(self):
         db = Database()
-        query = "SELECT chunk_id FROM review_queue WHERE status = 'pending' ORDER BY priority DESC, updated_at ASC;"
+        query = "SELECT chunk_id FROM review_queue WHERE status = 'pending' ORDER BY priority DESC, updated_at ASC LIMIT 40;"
         rows = await db.fetch(query)
         return [row['chunk_id'] for row in rows]
     
     async def delete_existing_reviews(self, chunk_ids: list):
         db = Database()
         query = "DELETE FROM reviews WHERE chunk_id = ANY($1);"
+        result = await db.execute(query, chunk_ids)
+        return result
+    
+    async def mark_reviews_completed(self, chunk_ids: list):
+        db = Database()
+        query = "UPDATE review_queue SET status = 'completed' WHERE chunk_id = ANY($1);"
         result = await db.execute(query, chunk_ids)
         return result
     

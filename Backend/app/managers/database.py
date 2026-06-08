@@ -1,3 +1,5 @@
+import traceback
+
 import asyncpg
 from app.utils.logger import get_logger
 from dotenv import load_dotenv
@@ -53,6 +55,7 @@ class Database:
                 return await connection.execute(query, *args)
 
             except Exception as e:
+                self.logger.error(traceback.format_exc())
                 self.logger.error(f"Error executing query: {e}")
                 raise
 
@@ -65,6 +68,7 @@ class Database:
                 return await connection.fetch(query, *args)
 
             except Exception as e:
+                self.logger.error(traceback.format_exc())   
                 self.logger.error(f"Error fetching data: {e}")
                 raise
 
@@ -77,6 +81,7 @@ class Database:
                 return await connection.fetchrow(query, *args)
 
             except Exception as e:
+                self.logger.error(traceback.format_exc())
                 self.logger.error(f"Error fetching row: {e}")
                 raise
 
@@ -89,7 +94,8 @@ class Database:
                 await connection.copy_records_to_table(table_name, records=data, columns=columns)
                 return True
             except Exception as e:
-                self.logger.error(f"Error fetching row: {e}")
+                self.logger.error(traceback.format_exc())
+                self.logger.error(f"Error copying data to table {table_name}: {e}")
                 raise
 
     async def copy_multiple_tables(self, table_data: dict):
@@ -117,5 +123,6 @@ class Database:
                 return await connection.fetchval(query, *args)
 
             except Exception as e:
+                self.logger.error(traceback.format_exc())
                 self.logger.error(f"Error fetching value: {e}")
                 raise

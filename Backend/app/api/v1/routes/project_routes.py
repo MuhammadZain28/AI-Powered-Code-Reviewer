@@ -29,7 +29,7 @@ async def create_project(project: ProjectCreate):
             backend=project.backend,
             technologies=project.technologies
         )
-        return {"message": "Project created successfully", "project_id": project}
+        return {"message": "Project created successfully", "data": project}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

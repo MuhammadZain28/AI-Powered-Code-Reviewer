@@ -1,5 +1,7 @@
+from datetime import datetime
 from app.managers.classes import Class
 from app.managers.chunks import Chunk
+from app.managers.reviews import Review
 from app.managers.files import File
 from app.managers.database import Database
 from app.services.parser_service import ParserService
@@ -43,6 +45,13 @@ class ParseController:
 
             await self.copy_table_to_database(files, imports, classes, calls, chunks, attributes, import_modules, project_id)
 
+            queue = []
+            for chunk in chunks:
+                if chunk[9] > 15:
+                    queue.append((chunk[0], chunk[9], datetime.now(), "pending"))
+
+            _ = await Review().build_queue(queue)
+    
             start_time = time.time()
 
             ids = await Chunk().fetch_embedding_id(project_id)
@@ -123,7 +132,6 @@ class ParseController:
 
         del_files = await File().manage_deleted_files(project_id, file_paths['D'])
 
-
         start_time = time.time()
 
         parsed_data = self.parser_service.parse_project(project_id=project_id, changed_files=file_paths['A'])
@@ -149,13 +157,13 @@ class ParseController:
 
         modified_data = self.parser_service.update_changed_chunks(chunk_map=chunk_data['chunk_map'], class_map=chunk_data['class_map'], files_in_db=chunk_data['files_in_db'])
 
-        await self.database_updates_for_changes(modified_data['files'], modified_data['classes'], modified_data['chunks'])
+        await self.database_updates_for_changes(modified_data['files'] + files, modified_data['classes'], modified_data['chunks'])
 
         imports.extend(modified_data['imports'])
         attributes.extend(modified_data['attributes'])
         import_modules.extend(modified_data['import_modules'])
         calls.extend(modified_data['calls'])
-        await self.copy_table_to_database(files, imports, classes, calls, chunks, attributes, import_modules, project_id)
+        await self.copy_table_to_database([], imports, classes, calls, chunks, attributes, import_modules, project_id)
 
         return {
             "files": len(files),

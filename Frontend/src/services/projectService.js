@@ -72,7 +72,7 @@ export const projectService = {
       console.log("Creating project with data:", projectData)  // Debugging statement
       const response = await api.post('/projects', projectData)
       console.log("API response for project creation:", response)  // Debugging statement
-      return response
+      return response.data
     } catch (error) {
       // Mock creation for development
       const newProject = {

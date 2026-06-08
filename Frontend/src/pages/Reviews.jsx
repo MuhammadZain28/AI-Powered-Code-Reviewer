@@ -8,11 +8,9 @@ import { getSeverityColor } from '../utils/statusColors'
 import { formatDate } from '../utils/helpers'
 import ReactMarkdown from 'react-markdown'
 import Button from '../components/ui/Button'
-import { useReviews } from '../hooks/useReviews'
 
 const Reviews = () => {
   const { projects, currentProject, setCurrentProject } = useProjects()
-  const { triggerReview } = useReviews()
   const [reviews, setReviews] = useState([])
   const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -31,6 +29,19 @@ const Reviews = () => {
       setReviews(data)
     } catch (error) {
       console.error('Failed to load reviews:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const triggerReview = async () => {
+    setLoading(true)
+    try {
+      await reviewService.triggerReview(currentProject.id)
+      await loadReviews()
+      await loadSummary()
+    } catch (error) {
+      console.error('Failed to trigger review:', error)
     } finally {
       setLoading(false)
     }
@@ -92,15 +103,20 @@ const Reviews = () => {
           AI-powered analysis for {currentProject.name}
         </h2>
         <Button onClick={() => triggerReview()} disabled={loading}>
-          {loading ? 'Triggering Review...' : 'Trigger Review'}
+          Trigger AI Review
         </Button>
       </div>
-      <button
-        onClick={() => setCurrentProject(null)}
-        className="btn btn-outline"
-      >
-        Back to Projects
-      </button>
+      <div className="gap-4 flex justify-between items-start">
+        <button
+          onClick={() => setCurrentProject(null)}
+          className="btn btn-outline"
+        >
+          Back to Projects
+        </button>
+        <Button onClick={() => loadReviews()}>
+          Refresh Reviews
+        </Button>
+      </div>
 
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -155,7 +171,9 @@ const Reviews = () => {
                       )}
                       <p className="mt-1 text-md"><span className="font-medium mr-2">Lines:</span> {review_chunks.start} - {review_chunks.end}</p>
                       {review_chunks.return_values && (
-                        <p className="mt-1 text-md"><span className="font-medium mr-2">Return Values:</span> {JSON.stringify(review_chunks.return_values)}</p>
+                        <p className="mt-1 text-md flex flex-col"><span className="font-medium mr-2">Return Values:</span> {review_chunks.return_values.map((value, index) => (
+                          value.length < 100 && <span key={index}>{index + 1}: {value}</span>
+                        ))}</p>
                       )}
                       <p className="mt-1 text-md"><span className="font-medium">Purpose:</span></p> 
                       <p className="mt-1 text-sm">{review_chunks.purpose}</p>

@@ -45,11 +45,12 @@ class GitHubService:
         )
         files = {'A': [], 'M': [], 'D': []}
         for f in result.stdout.strip().split("\n"):
-            status = f[0]
-            file_path = f[2:]
-            full_path = str(Path(repo_root) / file_path)
-            files[status].append(full_path)
-            self.logger.info(f"Changed file: {f}")
+            if f and f[0] in files and f[1] == "\t":
+                status = f[0]
+                file_path = f[2:]
+                full_path = str(Path(repo_root) / file_path)
+                files[status].append(full_path)
+                self.logger.info(f"Changed file: {f}")
         return files
 
 

@@ -60,6 +60,9 @@ class Chunker():
 
     def get_parser(self):
         parser = Parser()
+        if self.language not in LANGUAGES:
+            self.__logger.error(f"Unsupported language: {self.language}")
+            raise ValueError(f"Unsupported language: {self.language} for file")
         parser.language = LANGUAGES[self.language]
         return parser
 
@@ -401,7 +404,7 @@ class Chunker():
         root_node = tree.root_node
         self.__logger.info(f"chunk_map for change management: {len(chunk_map)} and class_map: {len(class_map)}")
         self.extract_chunks(root_node, chunk_map=chunk_map, class_map=class_map)
-        print(f"After chunking, remaining chunk_map: {len(chunk_map)}, remaining class_map: {len(class_map)}")
+        self.__logger.info(f"After chunking, remaining chunk_map: {len(chunk_map)}, remaining class_map: {len(class_map)}")
 
         return {
             "classes": self.class_chunk,
@@ -427,7 +430,6 @@ class Chunker():
             self.inheritances,                                      # list of parent classes
             code_hash                                               # hash of the class content for quick comparisons
         )
-        self.__logger.info(f"Built class '{cls[2]}' with hash {cls[7]}")
         return cls
 
     def build_chunk(self, id, node, docstring=None, parameters=None, return_values=None, complexity=1):

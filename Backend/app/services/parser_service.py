@@ -95,7 +95,7 @@ class ParserService:
 
     def parse_project(self, project_id, changed_files: list = None) -> dict:
         if changed_files is not None:
-            code_files = changed_files
+            code_files = [file for file in changed_files if self.is_valid_extension(file)]
         else:
             code_files = self.scan_project()
         project_files, project_classes, project_imports, project_chunks, project_calls, project_attributes, project_import_modules = [], [], [], [], [], [], []

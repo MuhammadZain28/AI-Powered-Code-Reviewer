@@ -1,3 +1,4 @@
+import traceback
 from fastapi import APIRouter, HTTPException
 from app.controller.review_controller import ReviewController
 
@@ -10,6 +11,7 @@ async def review_file():
         parsed_data = await controller.review_code()
         return parsed_data
     except Exception as e:
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 @review_router.get("/summary/{project_id}", response_model=dict)

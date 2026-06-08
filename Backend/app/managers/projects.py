@@ -13,24 +13,28 @@ class Project:
     async def insert(self, name, path, description, features: str = None, modules: str = None, frontend: str = None, backend: str = None, technologies: str = None):
         if not os.path.exists(path):
             self.__logger.warning("Project path does not exist. Please provide a valid path.")
-            return False
+            return None
         if os.path.isfile(path):
             self.__logger.warning("Project path is a file. Please provide a valid directory path.")
-            return False
+            return None
         if self.id is None:
             db = Database()
-            query = "INSERT INTO projects (name, path, description, features, modules, frontend, backend, technologies) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id"
+            query = "INSERT INTO projects (name, path, description, features, modules, frontend, backend, technologies) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, name, path, description, created_at"
             result = await db.fetchrow(query, name, path, description, features, modules, frontend, backend, technologies)
-            self.id = result[0]
-
-            self.__logger.info(f"Inserted new project with ID {self.id}")
-            return True
+            project_data = {
+                "id": result['id'],
+                "name": result['name'],
+                "path": result['path'],
+                "description": result['description'],
+                "created_at": result['created_at']
+            }
+            return project_data
         else:
             db = Database()
             query = "UPDATE projects SET name = $1, path = $2, description = $3, features = $4, modules = $5, frontend = $6, backend = $7, technologies = $8 WHERE id = $9"
             await db.execute(query, name, path, description, features, modules, frontend, backend, technologies, self.id)
             self.__logger.info(f"Updated project with ID {self.id}")
-            return True
+            return None
 
     async def delete(self):
         if self.id is not None:

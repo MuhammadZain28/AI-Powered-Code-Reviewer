@@ -1,4 +1,5 @@
 from app.managers.projects import Project
+from app.controller.parse_controller import ParseController
 
 class ProjectController:
     def __init__(self):
@@ -8,8 +9,11 @@ class ProjectController:
         features = features.split(",") if features else []
         modules = modules.split(",") if modules else []
         technologies = technologies.split(",") if technologies else []
-        result = await Project().insert(name, repo_path, description, features, modules, frontend, backend, technologies)
-        return result
+        project = await Project().insert(name, repo_path, description, features, modules, frontend, backend, technologies)
+        parse_controller = ParseController(repo_path)
+        print(f"Created project with ID: {project['id']}")
+        result = await parse_controller.parse_project(project_id=project['id'])
+        return project
 
     async def get_project(self, project_id: str) -> Project:
         project = Project(id=project_id, name="", path="", description="")

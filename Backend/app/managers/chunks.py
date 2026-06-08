@@ -114,7 +114,7 @@ WHERE embedding_id = ANY($1::bigint[])
                 "hash": chunk[10],
                 "docstring": chunk[11],
                 "parameters": chunk[12],
-                "return_values": [chunk[13]] if chunk[13] else [],
+                "return_values": chunk[13] if chunk[13] else [],
                 "complexity": chunk[14]
             })
 

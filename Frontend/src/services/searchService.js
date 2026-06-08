@@ -2,8 +2,8 @@ import api from './api'
 
 export const searchService = {
   // Semantic search
-  semanticSearch: (projectId, query, limit = 2) => 
-    api.post('/parse/search', null, { params: { query: query, k: limit } }),
+  semanticSearch: (projectId, query, limit = 3) => 
+    api.get('/parse/search', { params: { query: query, k: limit } }),
   
   // Code search
   codeSearch: (projectId, codeSnippet, limit = 10) => 
