@@ -35,8 +35,8 @@ class Chunk:
         ids = []
         score_map = {}
         query = """
-SELECT chunk_type, name, parameters, return_values, complexity, hash, docstring, embedding_id, content
-FROM chunks
+SELECT chunk_type, name, parameters, return_values, complexity, chunks.hash, docstring, embedding_id, content, start_line, end_line, class_id, class_name, files.id as file_id, files.path as file_path
+FROM chunks JOIN files ON chunks.file_id = files.id
 WHERE embedding_id = ANY($1::bigint[])
 """
         
@@ -44,7 +44,6 @@ WHERE embedding_id = ANY($1::bigint[])
             score_map[int(c_id)] = float(s)
             ids.append(int(c_id))
 
-        print(f"Fetching chunks with IDs: {ids}")
         rows = await db.fetch(query, ids)
 
         results = []
@@ -79,8 +78,6 @@ WHERE embedding_id = ANY($1::bigint[])
         chunk_map = {}
         files_in_db = {}
         for row in rows:
-            print(f"Fetched chunk from database: id={row['chunk_id']}, name={row['name']}, hash={row['hash']}")
-
             chunk_map[row["name"]] = {"id": row["chunk_id"], "hash": row["hash"]}
             class_map[row["class_name"]] = {"id": row["class_id"], "hash": row["class_hash"]}
             files_in_db[row["id"]] = {"project_id": row["project_id"], "language": row["language"], "path": row["path"]}

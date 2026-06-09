@@ -6,8 +6,8 @@ export const searchService = {
     api.get('/parse/search', { params: { query: query, k: limit } }),
   
   // Code search
-  codeSearch: (projectId, codeSnippet, limit = 10) => 
-    api.post('/search/code', { project_id: projectId, code_snippet: codeSnippet, limit }),
+  codeSearch: (projectId, query, limit = 1) => 
+    api.get('/parse/search', { params: { query: query, k: limit } }),
   
   // Get similar code
   getSimilarCode: (chunkId, limit = 5) => 

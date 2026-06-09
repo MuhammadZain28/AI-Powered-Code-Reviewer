@@ -22,7 +22,7 @@ const ProjectCard = ({ project, onDelete, onSelect }) => {
                 <FolderIcon className="w-6 h-6 text-primary-500" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-dark-text group-hover:text-primary-500 transition-colors">
+                <h3 className="text-lg font-semibold group-hover:text-primary-500 transition-colors">
                   {project.name}
                 </h3>
                 <p className="text-sm text-dark-textSecondary mt-0.5">
@@ -35,16 +35,6 @@ const ProjectCard = ({ project, onDelete, onSelect }) => {
                 {project.description}
               </p>
             )}
-            <div className="flex items-center space-x-4 text-sm text-dark-textSecondary">
-              <div className="flex items-center space-x-1">
-                <CodeIcon className="w-4 h-4" />
-                <span>{project.file_count || 0} files</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <ChatAltIcon className="w-4 h-4" />
-                <span>{project.review_count || 0} reviews</span>
-              </div>
-            </div>
           </Link>
           
           <div className="flex items-center space-x-2">

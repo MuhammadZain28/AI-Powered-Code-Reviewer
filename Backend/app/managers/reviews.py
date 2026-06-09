@@ -63,8 +63,6 @@ class Review:
         query = "SELECT public.get_function_context($1::uuid[]);"
         record = await db.fetch(query, chunk_id)
 
-        print(f"Fetched chunk context from database for chunk_id {chunk_id}: {len(record)}")
-
         if record:
             for row in record:
                 data = row['get_function_context']
@@ -75,30 +73,8 @@ class Review:
 
     
     def build_message(self, review_data: dict):
-        system_prompt = """or
-Your task is to review code in the context of the entire project, not in isolation. Give purpose and module based on the project context for Every Function or Chunk.
 
-Output should be in JSON format with the following structure:
-{
-  "purpose": "Purpose of the code chunk",
-  "module": "What module it is connected according to project"
-  "issues": [
-    {
-      "severity": "Critical | High | Medium | Low | None",
-      "category": "Bug | Security | Performance | Maintainability | Readability | Architecture",
-      "review": "Detailed review of the code.",
-      "suggested_fix": "Specific suggestions for how to fix the issue."
-    },
-    ...
-  ]
-}
-Output valid JSON only.
-"""
-
-        return [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Context:\n{json.dumps(review_data, indent=4)}"}
-        ]
+        return f"Context:\n{json.dumps(review_data, indent=4)}"
     
     async def build_queue(self, review_data: list):
         db = Database()

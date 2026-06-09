@@ -98,8 +98,8 @@ const AISearch = () => {
           </div>
           {results.map((result, index) => (
             <SearchResultCard key={result.id || index} result={result}>
-              {result.similarity_score && (
-                <SimilarityBadge score={result.similarity_score} />
+              {result.score && (
+                <SimilarityBadge score={result.score} />
               )}
             </SearchResultCard>
           ))}

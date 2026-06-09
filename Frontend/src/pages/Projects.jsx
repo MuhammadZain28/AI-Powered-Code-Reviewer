@@ -54,8 +54,8 @@ const Projects = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-dark-text">Projects</h1>
-          <p className="text-dark-textSecondary mt-1">Manage and analyze your code repositories with AI</p>
+          <h1 className="text-3xl font-bold">Projects</h1>
+          <p className="mt-1">Manage and analyze your code repositories with AI</p>
         </div>
         <Button onClick={() => setIsModalOpen(true)} className="flex items-center space-x-2">
           <PlusIcon className="w-5 h-5" />

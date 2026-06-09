@@ -6,14 +6,14 @@ import { PlusIcon } from '@heroicons/react/outline'
 
 const CreateProjectModal = ({ isOpen, onClose, onCreate }) => {
   const [formData, setFormData] = useState({
-    name: 'Distributed Academic Information System',
-    description: 'Distributed Academic Information System (DAIS) is a comprehensive web application designed to manage and streamline academic processes for educational institutions. It provides a centralized platform for students, faculty, and administrators to access and manage academic information efficiently.',
-    repo_path: 'D:\\Project\\Centralized-Academic-Management\\backend',
+    name: 'AI-Powered Code Reviewer',
+    description: 'An AI-powered code review assistant that integrates with GitHub repositories to provide intelligent code analysis, feedback, and suggestions. The application leverages advanced natural language processing and machine learning techniques to understand code context, identify potential issues, and offer actionable insights to developers.',
+    repo_path: 'D:\\Project\\AI-Powered Code Reviewer',
     frontend: 'React.js',
     backend: 'FastAPI',
-    technologies: 'PostgreSQL, Distributed Systems',
-    features: 'User Authentication, Fee Structure Comparison, Distributed Data Storage',
-    modules: 'User Management, Fee Management, Data Analytics'
+    technologies: 'PostgreSQL, OpenAI, Sentence Transformers, Git',
+    features: 'Code Analysis, Intelligent Feedback, GitHub Integration, Customizable Rules',
+    modules: 'Repository Management, Code Indexing, AI Analysis Engine, Feedback Generation, User Interface'
   })
   const [loading, setLoading] = useState(false)
 
