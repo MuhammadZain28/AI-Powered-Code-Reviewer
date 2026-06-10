@@ -35,7 +35,7 @@ class NormalizedImport:
     type: str
     import_modules: List[dict]
     file_id: Optional[str] = None
-    id: uuid.UUID = field(default_factory=lambda: uuid7())
+    id: uuid.UUID = field(default_factory=lambda: str(uuid7()))
 
     def to_dict(self) -> dict:
         modules_info = []
@@ -314,7 +314,7 @@ def _parse_python(tokens: List[Token], language: str, file_id: str) -> Normalize
 
     stream = TokenStream(tokens)
     first  = stream.consume()
-    __import__id = uuid7()
+    __import__id = str(uuid7())
     # ── from X import Y [as Z], … ─────────────────────────────────────────────
     if first and first.value == "from":
         # source may be dotted  e.g.  from os.path  →  IDENTIFIER DOT IDENTIFIER
@@ -357,7 +357,7 @@ def _parse_javascript(tokens: List[Token], language: str, file_id: str) -> Norma
     stream = TokenStream(tokens)
     first  = stream.consume()
 
-    __import__id = uuid7()
+    __import__id = str(uuid7())
 
     # ── @import UIKit ─────────────────────────────────────────────────────────
     if first and first.value == "@import":
@@ -431,7 +431,7 @@ def _parse_java(tokens: List[Token], language: str, file_id: str) -> NormalizedI
 
     # Collect dotted path  →  IDENTIFIER (DOT IDENTIFIER)*
     parts: List[str] = []
-    __import__id = uuid7()
+    __import__id = str(uuid7())
     while stream.peek() and stream.peek().type in ("IDENTIFIER", "DOT", "SEMICOLON"):
         tok = stream.consume()
         if tok.type == "IDENTIFIER":
@@ -461,7 +461,7 @@ def _parse_c(tokens: List[Token], language: str, file_id: str) -> NormalizedImpo
     stream.consume()                        # eat '#include' / '#import'
     source_tok = stream.consume()
     source     = source_tok.value if source_tok else ""
-    __import__id = uuid7()
+    __import__id = str(uuid7())
 
     return NormalizedImport(
         source  = source,

@@ -1,4 +1,5 @@
 import hashlib
+import json
 from app.utils.tokenizer import normalize
 from uuid6 import uuid7
 import re
@@ -23,6 +24,7 @@ TARGET_NODES = {
     "function_definition",
     "method_declaration",
     "function_declaration",
+    "variable_declarator",
     "class_definition",
     "class_declaration",
     "field_definition",
@@ -32,7 +34,7 @@ TARGET_NODES = {
 
 FRAMEWORK_NAMES = {
     "save", "delete", "update", "create", "get", "set",
-    "to_json", "from_json", "to_dict", "from_dict",
+    "to_json", "from_json", "to_dict", "from_dict", "__new__", "__call__",
     "render", "serialize", "deserialize", "__repr__", "__str__", "__eq__", "__hash__"
 }
 
@@ -67,6 +69,8 @@ class Chunker():
         return parser
 
     def extract_chunks(self, node, chunk_map: dict = None, class_map: dict = None):
+        if node.start_point[0] < 88:
+            self.__logger.info(f"Visiting node type: {node.type} at lines {node.start_point[0]+1}-{node.end_point[0]+1}")
         if node.type in TARGET_NODES:
             if node.type in {"class_definition", "class_declaration"}:
                 self.class_name = self.get_node_name(node)
@@ -88,10 +92,10 @@ class Chunker():
                         del class_map[self.class_name]  # Remove from map to identify deleted classes later
                     
                     else:
-                        self.current_class = uuid7()
+                        self.current_class = str(uuid7())
                 
                 else:
-                    self.current_class = uuid7()
+                    self.current_class = str(uuid7())
 
                 self.inheritances = self.extract_inheritances(node)
                 self.attributes.extend(self.extract_class_attributes(node))
@@ -119,10 +123,10 @@ class Chunker():
                         del chunk_map[name]  # Remove from map to identify deleted chunks later
 
                     else:
-                        id = uuid7()
+                        id = str(uuid7())
 
                 else:
-                    id = uuid7()
+                    id = str(uuid7())
 
                 params = self.extract_parameters(node)
                 calls, returns = self.extract_calls(node)
@@ -499,7 +503,6 @@ class Chunker():
         else:
             return "high_priority", score
 
-
     def calculate_hash(self, content: str) -> str:
         return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
@@ -567,6 +570,29 @@ class Chunker():
                             None,
                             self.functions.get(child)
                         ))
+                    elif root in alias_map:
+                        source = alias_map[root]["source"]
+                        result.add((
+                            chunk_id,
+                            "external_lib_call",
+                            call,
+                            source,
+                            child,
+                            source,
+                            None
+                        ))
+
+                        # if source has your project namespace → cross-file
+                        if source.startswith("app.") or '/' in source:
+                            result.add((
+                                chunk_id,
+                                "cross_file_call",
+                                call,
+                                source,
+                                alias_map[root]["module"],
+                                None,
+                                self.functions.get(alias_map[root]["module"])  # attempt to link to a file-level function if it exists
+                            ))
 
                 else:
                     root, child = parts[0], None
@@ -608,3 +634,13 @@ class Chunker():
                         ))
 
             return list(result)
+
+if __name__ == "__main__":
+    path = r"D:\Project\AI-Powered Code Reviewer\Frontend\src\pages\Reviews.jsx"
+    with open(path, "r", encoding="utf-8") as f:
+        code = f.read()
+
+    chunker = Chunker(code, "JavaScript (React)", file_id="test_file")
+    result = chunker.chunk_code()
+    print(json.dumps(result, indent=2))
+    

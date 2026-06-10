@@ -34,7 +34,7 @@ class ReviewController:
 
         tasks = [self.batch_reviews(message) for message in messages]
 
-        review_result = await asyncio.gather(*tasks)
+        # review_result = await asyncio.gather(*tasks)
 
         end_time = time.time()
 
@@ -42,11 +42,11 @@ class ReviewController:
 
         start_time = time.time()
 
-        _ = await self.review_manager.insert(review_result)
+        # _ = await self.review_manager.insert(review_result)
         _ = await self.review_manager.mark_reviews_completed(chunk_ids)
 
 
-        return {"message": "Success", "review": review_result}
+        return {"message": "Success", "review": "review_result"}
     
     async def get_reviews_summary(self, project_id: str):
         summary = await self.review_manager.get_review_summary(project_id)

@@ -2,20 +2,23 @@ import json
 import os
 import dotenv
 from google import genai
-import typing_extensions as typing
+from google.genai import types
+from pydantic import BaseModel, Field
+from typing import List
+import asyncio
 
 dotenv.load_dotenv()
 
-class Issue(typing.TypedDict):
-    severity: str
-    category: str
-    review: str
-    suggested_fix: str
+class Issue(BaseModel):
+    severity: str = Field(description="Severity of the issue ('Critical', 'Major', 'Minor')")
+    category: str = Field(description="Category of the issue (e.g., 'Security', 'Performance', 'Readability', 'Maintainability', 'Architectural')")
+    review: str = Field(description="Detailed review of the issue")
+    suggested_fix: str = Field(description="Suggested fix for the issue")
 
-class FunctionReview(typing.TypedDict):
-    purpose: str
-    module: str
-    issues: typing.List[Issue]
+class Review(BaseModel):
+    purpose: str = Field(description="Purpose of the review")
+    module: str = Field(description="Module being reviewed")
+    issues: List[Issue]
 
 class LLMClient:
     _instance = None
@@ -23,46 +26,41 @@ class LLMClient:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-
-            genai.configure(api_key=os.getenv("API_KEY"))
-
-            cls._instance.client = genai.GenerativeModel(
-                model_name=os.getenv("MODEL"),
-                system_instruction=(
-                    "You are an expert software architect. Review code chunks in the context of the project. "
-                    "Be extremely concise and technical. Output valid JSON only."
-                )
-            )
+            
+            # KEY FIX: Use 'v1beta' to support system_instruction and response_schema
+            cls._instance.client = genai.Client(api_key=os.getenv("API_KEY"))
+            cls._instance.model_name = "gemini-2.5-flash"
 
         return cls._instance
 
-    async def get_completion(self, prompt, id=None, temperature=0, max_tokens=800):
+    async def get_completion(self, prompt, id=None, temperature=0):
         try:
-            response = await self.client.generate_content(
-                prompt,
-                generation_config={
-                    "response_mime_type": "application/json",
-                    "response_schema": FunctionReview,
-                    "temperature": temperature
-                }
+            # Using the async client (.aio)
+            config = types.GenerateContentConfig(
+                system_instruction="You are a helpful assistant that reviews code not in isolation but in the context of the entire module. Provide detailed feedback on potential issues and suggest fixes. Always categorize issues by severity and type.",
+                temperature=temperature,
+                max_output_tokens=800,
+                response_mime_type="application/json",
+                response_schema=Review.model_json_schema()
             )
-            print(f"LLM response for chunk_id {id}: {response.text}")
+            response = await self.client.aio.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=config,
+            )
+
+            if response.parsed:
+                return {id: response.parsed}
+            
             if response.text:
-                return {id: json.loads(
-                    response.text
-                )}
+                return {id: json.loads(response.text)}
 
             return {id: "No valid response received"}
+            
         except Exception as e:
-            return f"LLM_ERROR: {str(e)}"
+            return {id: f"LLM_ERROR: {str(e)}"}
         
-if __name__ == "__main__":
-    import asyncio
-
-    async def test():
-        client = LLMClient()
-        prompt = "Review the following code chunk:\n\n```python\ndef add(a, b):\n    return a + b\n```"
-        response = await client.get_completion(prompt, id="test_chunk")
-        print(response)
-
-    asyncio.run(test())
+async def main():
+    client = LLMClient()
+    result = await client.get_completion("Check this code: def add(a,b): return a+b", id="1")
+    print(result)
