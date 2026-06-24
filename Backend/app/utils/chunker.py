@@ -107,14 +107,11 @@ class Chunker():
                 code = self.get_source_segment(node)
                 code_hash = self.calculate_hash(code)
 
-                self.__logger.info(f"Processing chunk '{name}'")
 
                 if chunk_map:
-                    self.__logger.info(f"Processing chunk '{name}' for change management")
                     data = chunk_map.get(name, {"id": None, "hash": None})
 
                     if data['id'] and data['hash'] == code_hash:
-                        self.__logger.info(f"Chunk '{name}' is unchanged. Skipping re-chunking.")
                         del chunk_map[name]  # Remove from map to identify deleted chunks later
                         return
 
@@ -128,11 +125,10 @@ class Chunker():
                 else:
                     id = str(uuid7())
 
-                params = self.extract_parameters(node)
-                calls, returns = self.extract_calls(node)
+                calls = self.extract_calls(node, name=name)
                 docstring = self.extract_docstring(node)
 
-                chunk = self.build_chunk(id, node, docstring=docstring, parameters=params, return_values=returns, complexity=self.complexity)
+                chunk = self.build_chunk(id, node, docstring=docstring, complexity=self.complexity)
 
                 self.calls.extend(self.classify_calls(calls, self.imports, self.imports_modules, id))
 
@@ -317,74 +313,43 @@ class Chunker():
 
         return None
 
-    def extract_parameters(self, node):
-
-        params = []
-
-        parameters_node = node.child_by_field_name("parameters")
-        if not parameters_node:
-            return params
-
-        for child in parameters_node.children:
-
-            if child.type in ["(", ")", ",", "{", "}"]:
-                continue
-
-            if child.type == "identifier":
-                params.append(self.get_source_segment(child))
-
-            elif child.type == "typed_parameter":
-                name_node = child.child_by_field_name("name")
-                if name_node:
-                    params.append(self.get_source_segment(name_node))
-
-            elif child.type == "default_parameter":
-                name_node = child.child_by_field_name("name")
-                if name_node:
-                    params.append(self.get_source_segment(name_node))
-        return params
-
-    def extract_calls(self, node):
+    def extract_calls(self, node, name=None):
 
         calls = []
-        returns = []
 
         def traverse(curr):
             if curr.type in {
                 "if_statement",
                 "match_statement",
                 "case_statement",
-                "except_clause",
                 "conditional_expression",
                 "switch_statement",
-                "try_statement",
                 "for_statement",
                 "while_statement",
                 "or_expression",
-                "and_expression"
+                "and_expression",
+                "try_statement",
             }:
                 self.complexity += 1
 
             elif curr.type in {"call", "call_expression", "member_expression"}:
                 func_node = curr.child_by_field_name("function")
 
-                if func_node:
-                    call_name = self.get_source_segment(func_node)
-                    parts = call_name.split(".")
-                    if parts[0] in {'db', 'database', 'session', 'Database()'} or parts[-1].lower() in {"fetch", "execute", "query", "save", "add", "update", "delete"}:
-                        self.complexity += 2
-                    calls.append(call_name)
-
-            elif curr.type == "return_statement":
-                return_value = self.get_source_segment(curr)
-                returns.append(return_value.split("return", 1)[-1].strip())
+            if func_node:
+                call_name = self.get_source_segment(func_node)
+                parts = call_name.split(".")
+                if parts[-1] == name:
+                    self.complexity += 1
+                if parts[0] in {'db', 'database', 'session', 'Database()'} or parts[-1].lower() in {"fetch", "execute", "query", "save", "add", "update", "delete"}:
+                    self.complexity += 2
+                calls.append(call_name)
 
             for child in curr.children:
                 traverse(child)
 
         traverse(node)
 
-        return (calls, returns)
+        return calls
 
     def chunk_code(self) -> dict:
         parser = self.get_parser()
@@ -420,7 +385,6 @@ class Chunker():
             "class_map": class_map,
             "chunk_map": chunk_map
         }
-
 
     def build_class(self, id, node, name, code_hash, docstring=None):
         self.__logger.info(f"Building class '{name}' with hash {code_hash}")
@@ -582,18 +546,6 @@ class Chunker():
                             None
                         ))
 
-                        # if source has your project namespace → cross-file
-                        if source.startswith("app.") or '/' in source:
-                            result.add((
-                                chunk_id,
-                                "cross_file_call",
-                                call,
-                                source,
-                                alias_map[root]["module"],
-                                None,
-                                self.functions.get(alias_map[root]["module"])  # attempt to link to a file-level function if it exists
-                            ))
-
                 else:
                     root, child = parts[0], None
 
@@ -621,26 +573,4 @@ class Chunker():
                         None
                     ))
 
-                    # if source has your project namespace → cross-file
-                    if source.startswith("app.") or '/' in source:
-                        result.add((
-                            chunk_id,
-                            "cross_file_call",
-                            call,
-                            source,
-                            alias_map[root]["module"],
-                            None,
-                            self.functions.get(alias_map[root]["module"])  # attempt to link to a file-level function if it exists
-                        ))
-
             return list(result)
-
-if __name__ == "__main__":
-    path = r"D:\Project\AI-Powered Code Reviewer\Frontend\src\pages\Reviews.jsx"
-    with open(path, "r", encoding="utf-8") as f:
-        code = f.read()
-
-    chunker = Chunker(code, "JavaScript (React)", file_id="test_file")
-    result = chunker.chunk_code()
-    print(json.dumps(result, indent=2))
-    
