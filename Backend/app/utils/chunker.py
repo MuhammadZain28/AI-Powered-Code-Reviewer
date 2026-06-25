@@ -3,6 +3,8 @@ import json
 from app.utils.tokenizer import normalize
 from uuid6 import uuid7
 import re
+from dataclasses import dataclass, field
+from typing import List, Optional
 from tree_sitter import Language, Parser
 import tree_sitter_cpp
 import tree_sitter_java
@@ -10,6 +12,41 @@ import tree_sitter_javascript
 import tree_sitter_typescript
 import tree_sitter_python
 from app.utils.logger import get_logger
+
+
+@dataclass
+class ClassInfo:
+    id: str
+    file_id: str
+    name: str
+    start_line: int
+    end_line: int
+    inheritances: List[str] = field(default_factory=list)
+    hash: str = ""
+
+@dataclass
+class FunctionInfo:
+    id: str
+    file_id: str
+    class_id: Optional[str]
+    name: str
+    code: str
+    start: int
+    end: int
+    score: float
+    hash: str
+    complexity: int
+
+
+@dataclass(frozen=True)
+class CallInfo:
+    resolved_path: Optional[str] = None
+    library: Optional[str] = None
+    function_name: Optional[str] = None
+    caller_id: Optional[str] = None
+    callee_id: Optional[str] = None
+    call_type: Optional[str] = None
+    call_line: Optional[int] = None
 
 LANGUAGES = {
     "Python": Language(tree_sitter_python.language()),
@@ -20,6 +57,7 @@ LANGUAGES = {
     "TypeScript": Language(tree_sitter_typescript.language_typescript()),
     "TypeScript (React)": Language(tree_sitter_typescript.language_tsx()),
 }
+
 TARGET_NODES = {
     "function_definition",
     "method_declaration",
@@ -47,7 +85,7 @@ class Chunker():
         self.source_code = source_code
         self.language = language
         self.file_id = file_id
-        self.class_chunk = []
+        self.classes = []
         self.imports = []
         self.imports_modules = []
         self.calls = []
@@ -55,7 +93,6 @@ class Chunker():
         self.chunks = []
         self.complexity = 1
         self.current_class = None
-        self.class_name = None
         self.functions = {}
 
         self.__logger = get_logger("Chunker")
@@ -69,66 +106,28 @@ class Chunker():
         return parser
 
     def extract_chunks(self, node, chunk_map: dict = None, class_map: dict = None):
-        if node.start_point[0] < 88:
-            self.__logger.info(f"Visiting node type: {node.type} at lines {node.start_point[0]+1}-{node.end_point[0]+1}")
         if node.type in TARGET_NODES:
             if node.type in {"class_definition", "class_declaration"}:
                 self.class_name = self.get_node_name(node)
                 code = self.get_source_segment(node)
                 code_hash = self.calculate_hash(code)
 
-                if class_map:
-                    self.__logger.info(f"Processing class '{self.class_name}' for change management")
-                    data = class_map.get(self.class_name, {"id": None, "hash": None})
-    
-                    if data['id'] and data['hash'] == code_hash:
-                        self.__logger.info(f"Class '{self.class_name}' is unchanged. Skipping re-chunking.")
-                        del class_map[self.class_name]  # Remove from map to identify deleted classes later
-                        return
-                    
-                    elif data['id'] and data['hash'] != code_hash:
-                        self.__logger.info(f"Class '{self.class_name}' has changed. Re-chunking with existing ID.")
-                        self.current_class = data['id']
-                        del class_map[self.class_name]  # Remove from map to identify deleted classes later
-                    
-                    else:
-                        self.current_class = str(uuid7())
-                
-                else:
-                    self.current_class = str(uuid7())
+                self.current_class = str(uuid7())
 
                 self.inheritances = self.extract_inheritances(node)
                 self.attributes.extend(self.extract_class_attributes(node))
-                docstring = self.extract_docstring(node)
-                self.class_chunk.append(self.build_class(self.current_class, node, self.class_name, code_hash, docstring))
+                self.classes.append(self.build_class(self.current_class, node, self.class_name, code_hash))
 
             else:
                 name = self.get_node_name(node)
                 code = self.get_source_segment(node)
                 code_hash = self.calculate_hash(code)
 
-
-                if chunk_map:
-                    data = chunk_map.get(name, {"id": None, "hash": None})
-
-                    if data['id'] and data['hash'] == code_hash:
-                        del chunk_map[name]  # Remove from map to identify deleted chunks later
-                        return
-
-                    elif data['id'] and data['hash'] != code_hash:
-                        id = data['id']
-                        del chunk_map[name]  # Remove from map to identify deleted chunks later
-
-                    else:
-                        id = str(uuid7())
-
-                else:
-                    id = str(uuid7())
+                id = str(uuid7())
 
                 calls = self.extract_calls(node, name=name)
-                docstring = self.extract_docstring(node)
 
-                chunk = self.build_chunk(id, node, docstring=docstring, complexity=self.complexity)
+                chunk = self.build_chunk(id, node, complexity=self.complexity)
 
                 self.calls.extend(self.classify_calls(calls, self.imports, self.imports_modules, id))
 
@@ -289,30 +288,6 @@ class Chunker():
 
         return inheritances
 
-    def extract_docstring(self, node):
-        body = node.child_by_field_name("body")
-        if not body:
-            return None
-
-        for child in body.children:
-
-            if child.type in ["{", "}", "(", ")", ","]:
-                continue
-
-            if child.type == "expression_statement":
-                inner = child.children[0] if child.children else None
-
-                if inner and inner.type == "string":
-                    return self.source_code[inner.start_byte:inner.end_byte]
-
-            if child.type == "comment":
-                if child.start_point[0] == node.start_point[0] or child.start_point[0] <= node.start_point[0] + 1:
-                    return self.source_code[child.start_byte:child.end_byte]
-
-            break
-
-        return None
-
     def extract_calls(self, node, name=None):
 
         calls = []
@@ -333,16 +308,12 @@ class Chunker():
                 self.complexity += 1
 
             elif curr.type in {"call", "call_expression", "member_expression"}:
+                self.complexity += 1
                 func_node = curr.child_by_field_name("function")
 
-            if func_node:
-                call_name = self.get_source_segment(func_node)
-                parts = call_name.split(".")
-                if parts[-1] == name:
-                    self.complexity += 1
-                if parts[0] in {'db', 'database', 'session', 'Database()'} or parts[-1].lower() in {"fetch", "execute", "query", "save", "add", "update", "delete"}:
-                    self.complexity += 2
-                calls.append(call_name)
+                if func_node:
+                    call_name = self.get_source_segment(func_node)
+                    calls.append({"function_name": call_name, "line": func_node.start_point[0] + 1})
 
             for child in curr.children:
                 traverse(child)
@@ -357,8 +328,9 @@ class Chunker():
         tree = parser.parse(bytes(self.source_code, "utf8"))
         root_node = tree.root_node
         self.extract_chunks(root_node)
+
         return {
-            "classes": self.class_chunk,
+            "classes": self.classes,
             "imports": self.imports,
             "chunks": self.chunks,
             "calls": self.calls,
@@ -371,12 +343,11 @@ class Chunker():
         self.source_code = self.clean_code(self.source_code)
         tree = parser.parse(bytes(self.source_code, "utf8"))
         root_node = tree.root_node
-        self.__logger.info(f"chunk_map for change management: {len(chunk_map)} and class_map: {len(class_map)}")
+
         self.extract_chunks(root_node, chunk_map=chunk_map, class_map=class_map)
-        self.__logger.info(f"After chunking, remaining chunk_map: {len(chunk_map)}, remaining class_map: {len(class_map)}")
 
         return {
-            "classes": self.class_chunk,
+            "classes": self.classes,
             "imports": self.imports,
             "chunks": self.chunks,
             "calls": self.calls,
@@ -388,47 +359,43 @@ class Chunker():
 
     def build_class(self, id, node, name, code_hash, docstring=None):
         self.__logger.info(f"Building class '{name}' with hash {code_hash}")
-        cls = (
-            id,                                                     # unique identifier for the class
-            self.file_id,                                           # associate class with its file
-            name,                                                   # human-readable class name
-            node.start_point[0] + 1,                                # line numbers are 0-indexed in tree-sitter
-            node.end_point[0] + 1,                                  # end line of the class
-            docstring,                                              # docstring for the class
-            self.inheritances,                                      # list of parent classes
-            code_hash                                               # hash of the class content for quick comparisons
+        cls = ClassInfo(
+            id=id,
+            file_id=self.file_id,
+            name=name,
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            docstring=docstring,
+            inheritances=self.inheritances,
+            hash=code_hash,
         )
         return cls
 
-    def build_chunk(self, id, node, docstring=None, parameters=None, return_values=None, complexity=1):
+    def build_chunk(self, id, node, complexity):
         code = self.get_source_segment(node)
         name = self.get_node_name(node)
+
         start = node.start_point[0] + 1
         end = node.end_point[0] + 1
-        
-        chunk_type, score = self.classify_function(name, start, end, complexity, len(self.calls))
 
-        chunk = (
-            id,                             # unique identifier for the chunk
-            self.file_id,                   # associate chunk with its file
-            self.current_class,             # associate chunk with its class (if any)
-            self.class_name,                # associate class name
-            name,                           # human-readable name (function name, method name, etc.)
-            code,                           # actual code content of the chunk
-            start,                          # start line of the chunk
-            end,                            # end line of the chunk
-            chunk_type,                     # type of chunk (function, method, class, etc.)
-            score,                          # priority score for review
-            self.calculate_hash(code),      # hash of the chunk content for quick comparisons
-            docstring,                      # docstring for the chunk
-            parameters,                     # list of parameters if it's a function/method
-            return_values,                  # list of return values if it's a function/method
-            complexity                      # complexity metrics for the chunk
+        score = self.classify_function(name, start, end, complexity, len(self.calls))
+
+        chunk = FunctionInfo(
+            id=id,
+            file_id=self.file_id,
+            class_id=self.current_class,
+            name=name,
+            code=code,
+            start=start,
+            end=end,
+            score=score,
+            hash=self.calculate_hash(code),
+            complexity=complexity,
         )
         self.complexity = 1
         self.functions[name] = id
         return chunk
-    
+
     def classify_function(self, name, start, end, complexity, calls=0):
         """
         Returns: skip | wrapper | user_defined
@@ -445,7 +412,7 @@ class Chunker():
             or name == "constructor"
             or name_lower in JS_LIFECYCLE
         ):
-            return "skip", 0
+            return 0
 
         # -------------------------
         # 2. Simple framework wrappers
@@ -457,15 +424,15 @@ class Chunker():
 
         score = (complexity * 2.5) + (length * 0.5) + (calls * 3) + framework_bonus
         if score < 10:
-            return "skip", score
+            return score
         if score < 15:
-            return "wrapper", score
+            return score
         elif score < 30:
-            return "low_priority", score
+            return score
         elif score < 50:
-            return "medium_priority", score
+            return score
         else:
-            return "high_priority", score
+            return score
 
     def calculate_hash(self, content: str) -> str:
         return hashlib.sha256(content.encode('utf-8')).hexdigest()
@@ -479,98 +446,87 @@ class Chunker():
     def get_source_segment(self, node):
         return self.source_code[node.start_byte:node.end_byte]
 
-    def clean_code(self, code: str) -> str:
-        parser = self.get_parser()
-        tree = parser.parse(bytes(code, "utf8"))
-        root = tree.root_node
-
-        removals = []
-
-        def walk(node):
-            if node.type == "comment":
-                removals.append((node.start_byte, node.end_byte))
-            for child in node.children:
-                walk(child)
-
-        walk(root)
-
-        for start, end in sorted(removals, reverse=True):
-            code = code[:start] + code[end:]
-
-        code = re.sub(r'\n{3,}', '\n\n', code)
-        return code.strip()
-
     def classify_calls(self, chunk_calls: list, imports: list, import_modules: list, chunk_id: str) -> list:
-            """
-            chunk_calls   = ['faiss.IndexIDMap', 'np.linalg.norm', 'get_logger', 'self.save_index']
-            imports       = parsed import list from your schema
-            class_methods = ['__init__', 'normalize_embeddings', 'add_embeddings', ...]
-            """
             alias_map = {}
             for imp in imports:
                 for module_info in import_modules:
                     module = module_info[1]
                     alias = module_info[2]
                     key = alias if alias else module
-                    alias_map[key] = {
-                        "source": imp[2],
-                        "module": module
-                    }
-
+                    alias_map[key] = { "source": imp[2], "module": module }
 
             result = set()
 
             for call in chunk_calls:
-                parts = call.split(".")   # faiss.IndexIDMap → faiss
+                parts = call['function_name'].split(".")
+
                 if len(parts) == 2:
                     root, child = parts[0], parts[1]
+
                     if root == "self":
-                        result.add((
-                            chunk_id,
-                            "internal_method_call",
-                            call,
-                            "class",
-                            child,
-                            None,
-                            self.functions.get(child)
-                        ))
+                        ci = CallInfo(
+                            function_name=call['function_name'],
+                            caller_id=chunk_id,
+                            callee_id=self.functions.get(child),
+                            call_type="internal_method_call",
+                            resolved_path=child,
+                            library=None
+                        )
+                        result.add(ci)
+
                     elif root in alias_map:
                         source = alias_map[root]["source"]
-                        result.add((
-                            chunk_id,
-                            "external_lib_call",
-                            call,
-                            source,
-                            child,
-                            source,
-                            None
-                        ))
+
+                        if child in self.functions:
+                            ci = CallInfo(
+                                function_name=call['function_name'],
+                                caller_id=chunk_id,
+                                callee_id=self.functions.get(child),
+                                call_type="cross_file_call",
+                                resolved_path=child,
+                                library=source,
+                                call_line=call['line']
+                            )
+                            result.add(ci)
+
+                        else:
+                            ci = CallInfo(
+                                function_name=call['function_name'],
+                                caller_id=chunk_id,
+                                callee_id=None,
+                                call_type="external_lib_call",
+                                resolved_path=child,
+                                library=source,
+                                call_line=call['line']
+                            )
+                            result.add(ci)
 
                 else:
                     root, child = parts[0], None
 
-                if root in self.functions:
-                    result.add((
-                        chunk_id,
-                        "internal_method_call",
-                        call,
-                        "file",
-                        root,
-                        None,
-                        self.functions.get(root)
-                    ))
+                    if root in self.functions:
+                        ci = CallInfo(
+                            function_name=call['function_name'],
+                            caller_id=chunk_id,
+                            callee_id=self.functions.get(root),
+                            call_type="cross_file_call",
+                            resolved_path=root,
+                            library=None,
+                            call_line=call['line']
+                        )
+                        result.add(ci)
 
-                # aliased or direct external lib
-                elif root in alias_map:
-                    source = alias_map[root]["source"]
-                    result.add((
-                        chunk_id,
-                        "external_lib_call",
-                        call,
-                        source,
-                        child,
-                        source,
-                        None
-                    ))
+                    elif root in alias_map:
+                        source = alias_map[root]["source"]
+                        ci = CallInfo(
+                            function_name=call['function_name'],
+                            caller_id=chunk_id,
+                            callee_id=None,
+                            call_type="external_lib_call",
+                            resolved_path=child,
+                            library=source,
+                            call_line=call['line']
+                        )
+                        result.add(ci)
 
             return list(result)
