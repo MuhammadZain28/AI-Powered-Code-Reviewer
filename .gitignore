@@ -81,4 +81,4 @@ coverage/
 htmlcov/
 .cache/
 
-models
+Backend/app/models
