@@ -504,5 +504,22 @@ def helper():
             "os.getcwd"
         }
 
+    def test_call_graph_schema(self):
+
+        source = """
+    def foo():
+        print("Hello")
+    """
+
+        result = run_chunker(source)
+
+        assert len(result["calls"]) == 1
+
+        call = result["calls"][0]
+
+        assert call["caller_id"] is not None
+        assert call["function_name"] == "print"
+        assert call["call_line"] > 0
+
 if __name__ == "__main__":
     pytest.main([__file__])

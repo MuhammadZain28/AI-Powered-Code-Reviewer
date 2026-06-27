@@ -411,5 +411,85 @@ def outside():
 
         assert outside.class_id is None
 
+    def test_function_schema_fields(self):
+
+        source = """
+    def add(a, b):
+        return a + b
+    """
+
+        result = run_chunker(source)
+
+        assert len(result["chunks"]) == 1
+
+        chunk = result["chunks"][0]
+
+        assert chunk.id is not None
+        assert chunk.file_id is not None
+        assert chunk.class_id is None
+        assert chunk.name == "add"
+        assert chunk.start > 0
+        assert chunk.end >= chunk.start
+        assert chunk.code.strip() != ""
+        assert chunk.signature == "def add(a, b):"
+        assert chunk.score >= 0
+        assert chunk.complexity >= 1
+        assert chunk.hash is not None
+
+    def test_class_schema_fields(self):
+
+        source = """
+    class User:
+        pass
+    """
+
+        result = run_chunker(source)
+
+        assert len(result["classes"]) == 1
+
+        cls = result["classes"][0]
+
+        assert cls.id is not None
+        assert cls.file_id is not None
+        assert cls.name == "User"
+        assert cls.start > 0
+        assert cls.end >= cls.start
+        assert cls.hash is not None
+
+    def test_all_relationships_are_valid(self):
+
+        source = """
+    import os
+
+    class User:
+
+        def __init__(self):
+            self.name = ""
+
+        def login(self):
+            print(self.name)
+
+    def helper():
+        os.getcwd()
+    """
+
+        result = run_chunker(source)
+
+        class_ids = {cls.id for cls in result["classes"]}
+        chunk_ids = {chunk.id for chunk in result["chunks"]}
+
+        # Method → Class
+        for chunk in result["chunks"]:
+            if chunk.class_id is not None:
+                assert chunk.class_id in class_ids
+
+        # Call → Function
+        for call in result["calls"]:
+            assert call["caller_id"] in chunk_ids
+
+        # Attribute → Class
+        for attr in result["attributes"]:
+            assert attr.class_id in class_ids
+
 if __name__ == "__main__":
-    TestMixedExtraction().test_global_function_has_no_class()
+    pytest.main()

@@ -30,7 +30,7 @@ class ParseController:
 
 
             self.__logger.info(f"Finished parsing project")
-            
+
             files = parsed_data['files']
             imports = parsed_data['imports']
             classes = parsed_data['classes']
@@ -51,7 +51,7 @@ class ParseController:
                     queue.append((chunk[0], chunk[9], datetime.now(), "pending"))
 
             _ = await Review().build_queue(queue)
-    
+
             start_time = time.time()
 
             ids = await Chunk().fetch_embedding_id(project_id)
@@ -61,7 +61,7 @@ class ParseController:
             embedding_data = {}
             chunk_calls = {}
             for file in files:
-                embedding_data[file[0]] = {
+                embedding_data[file.id] = {
                     'chunks': []
                 }
 
@@ -88,11 +88,6 @@ class ParseController:
 
 
             vectors = self.embedding_service.embed_chunks(embedding_data, chunk_calls)
-            
-
-            self.__logger.info(f"Processed Chunks with {len(vectors)} vectors and {len(ids)} ids.")
-
-            print(f"Vectors: {len(vectors)}, IDs: {ids}")
 
             if len(vectors) == len(ids):
                 self.faiss_index.add_embeddings(vectors, ids)
@@ -130,7 +125,7 @@ class ParseController:
         file_paths = self.github_service.get_last_commit_files()
         self.__logger.info(f"Fetched changed files from GitHub for change management: {file_paths}")
 
-        del_files = await File().manage_deleted_files(project_id, file_paths['D'])
+        _ = await File().manage_deleted_files(project_id, file_paths['D'])
 
         start_time = time.time()
 
@@ -138,7 +133,7 @@ class ParseController:
 
 
         self.__logger.info(f"Finished parsing project")
-        
+
         files = parsed_data['files']
         imports = parsed_data['imports']
         classes = parsed_data['classes']
@@ -191,12 +186,22 @@ class ParseController:
 
         self.__logger.info(f"Connected to database in {end_time - start_time:.2f} seconds. Starting to save data...")
 
+        file_records = [
+            file.to_record() if hasattr(file, "to_record") else file
+            for file in files
+        ]
+
+        attribute_records = [
+            attribute.to_record() if hasattr(attribute, "to_record") else attribute
+            for attribute in attributes
+        ]
+
         table_data = {
-            'files': { 'data': files, 'columns': ['id', 'project_id', 'path', 'language', 'hash'] },
+            'files': { 'data': file_records, 'columns': ['id', 'project_id', 'path', 'language', 'hash'] },
             'imports': { 'data': imports, 'columns': ['id', 'file_id', 'source', 'type'] },
             'import_modules': { 'data': import_modules, 'columns': ['import_id', 'module', 'alias'] },
             'classes': { 'data': classes, 'columns': ['id', 'file_id', 'name', 'start_line', 'end_line', 'docstring', 'inheritance', 'hash'] },
-            'class_attributes': { 'data': attributes, 'columns': ['class_id', 'name', 'attribute_type', 'default_value', 'is_static'] },
+            'class_attributes': { 'data': attribute_records, 'columns': ['class_id', 'name', 'attribute_type', 'default_value', 'is_static'] },
             'chunks': { 'data': chunks, 'columns': ['id', 'file_id', 'class_id', 'class_name', 'name', 'content', 'start_line', 'end_line', 'chunk_type', 'score', 'hash', 'docstring', 'parameters', 'return_values', 'complexity'] },
             'calls': { 'data': calls, 'columns': ['caller_id', 'call_type', 'function_name', 'source', 'resolve_to', 'library', 'callee_id'] }
         }

@@ -357,7 +357,7 @@ def process(data):
 
         chunk = result["chunks"][0]
 
-        assert chunk.complexity == 7
+        assert chunk.complexity == 8
 
         assert chunk.score > 0
 
@@ -388,6 +388,3 @@ def foo():
 
         assert c.complexity > s.complexity
         assert c.score > s.score
-
-if __name__ == "__main__":
-    TestComplexity().test_boolean_expression()

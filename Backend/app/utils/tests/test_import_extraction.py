@@ -55,7 +55,7 @@ def foo():
 
         assert result["imports"] == []
 
-        assert result["import_modules"] == []
+        assert result["import_symbols"] == []
 
 
 # =========================================================
@@ -226,7 +226,7 @@ import numpy as np
 
 class TestImportModules:
 
-    def test_import_modules_exists(self):
+    def test_import_symbols_exists(self):
 
         source = """
 import os
@@ -235,11 +235,11 @@ import os
         result = run_chunker(source)
 
         assert isinstance(
-            result["import_modules"],
+            result["import_symbols"],
             list
         )
 
-    def test_import_modules_alias(self):
+    def test_import_symbols_alias(self):
 
         source = """
 import numpy as np
@@ -247,9 +247,9 @@ import numpy as np
 
         result = run_chunker(source)
 
-        assert len(result["import_modules"]) > 0
+        assert len(result["import_symbols"]) > 0
 
-    def test_from_import_modules(self):
+    def test_from_import_symbols(self):
 
         source = """
 from collections import defaultdict
@@ -257,7 +257,7 @@ from collections import defaultdict
 
         result = run_chunker(source)
 
-        assert len(result["import_modules"]) > 0
+        assert len(result["import_symbols"]) > 0
 
     def test_multiple_modules(self):
 
@@ -269,7 +269,7 @@ import pandas as pd
 
         result = run_chunker(source)
 
-        assert len(result["import_modules"]) == 3
+        assert len(result["import_symbols"]) == 3
 
 
 # =========================================================
@@ -356,5 +356,37 @@ import logging
 
         assert len(result["imports"]) == 8
 
-if __name__ == "__main__":
-    pytest.main()
+    def test_import_schema(self):
+
+        source = """
+    import os
+    from math import sqrt
+    """
+
+        result = run_chunker(source)
+
+        assert len(result["imports"]) == 2
+
+        for imp in result["imports"]:
+            print(f"Import: {imp}")
+            assert imp[0] is not None
+            assert imp[1] is not None
+            assert imp[2] is not None
+
+    def test_import_symbol_schema(self):
+
+        source = """
+    from math import sin, cos
+    """
+
+        result = run_chunker(source)
+
+        symbols = result["import_symbols"]
+
+        assert len(symbols) == 2
+
+        for symbol in symbols:
+
+            assert symbol[0] is not None
+            assert symbol[1] is not None
+            assert symbol[3] is False

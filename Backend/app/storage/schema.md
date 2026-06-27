@@ -42,7 +42,6 @@ CREATE TABLE "classes" (
 	"name" text NOT NULL,
 	"start_line" integer,
 	"end_line" integer,
-	"docstring" text,
 	"is_abstract" boolean DEFAULT false,
 	"method_count" integer DEFAULT 0,
 	"hash" text,
@@ -72,19 +71,15 @@ CREATE TABLE "functions" (
 	"id" uuid DEFAULT gen_random_uuid(),
 	"file_id" uuid NOT NULL,
 	"class_id" uuid,
-	"chunk_type" text NOT NULL,
 	"name" text,
 	"start_line" integer NOT NULL,
 	"end_line" integer NOT NULL,
 	"content" text NOT NULL,
-	"docstring" text,
 	"signature" text,
-	"return_type" text,
 	"cyclomatic_complexity" integer DEFAULT 1,
 	"hash" text,
 	"created_at" timestamp DEFAULT now(),
-	CONSTRAINT "chunks_pkey" PRIMARY KEY("id"),
-	CONSTRAINT "chunks_chunk_type_check" CHECK ((chunk_type = ANY (ARRAY['function'::text, 'method'::text, 'class'::text, 'block'::text, 'module'::text])))
+	CONSTRAINT "chunks_pkey" PRIMARY KEY("id")
 );
 CREATE TABLE "import_symbols" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
