@@ -43,7 +43,8 @@ class NormalizedImport:
             modules_info.append((
                 mod.get("import_id"),
                 mod.get("module"),
-                mod.get("alias")
+                mod.get("alias"),
+                False
             ))
         return (
             self.id,
@@ -504,35 +505,3 @@ def normalize(code: str, language: str, file_id: Optional[str] = None) -> Normal
         raise ValueError(f"Unsupported language: {language!r}")
 
     return parser(tokens, language, file_id).to_dict()
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  SMOKE TESTS
-# ═══════════════════════════════════════════════════════════════════════════════
-
-if __name__ == "__main__":
-    import json
-
-    cases = [
-        ("import os",                                          "python"),
-        ("import os as operating_system",                      "python"),
-        ("from collections import defaultdict as dd",          "python"),
-        ("from os.path import join, exists",                   "python"),
-        ("from typing import List, Optional, Dict",            "python"),
-        ("import React, { useEffect as effect } from 'react'", "javascript"),
-        ("import * as ns from 'lodash'",                       "javascript"),
-        ("import type { Foo } from './types'",                 "typescript"),
-        ("const fs = require('fs')",                           "javascript"),
-        ("export { Button as Btn } from './Button'",           "javascript"),
-        ("#include <iostream>",                                 "c"),
-        ('#include "myheader.h"',                              "c"),
-        ("@import UIKit;",                                     "javascript"),
-        ("import java.util.List;",                             "java"),
-        ("import static java.lang.Math.PI;",                   "java"),
-    ]
-
-    for code, lang in cases:
-        result = normalize(code, lang)
-        print(f"INPUT  : {code!r}  [{lang}]")
-        print(f"OUTPUT : {json.dumps(result.to_dict(), indent=2)}")
-        print()
