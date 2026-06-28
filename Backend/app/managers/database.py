@@ -114,6 +114,7 @@ class Database:
 
         return True
 
+
     async def fetch_values(self, query: str, *args):
         if not self.pool:
             self.logger.warning("Database connection not established. Attempting to connect...")

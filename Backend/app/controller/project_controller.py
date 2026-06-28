@@ -11,8 +11,9 @@ class ProjectController:
         technologies = technologies.split(",") if technologies else []
         project = await Project().insert(name, repo_path, description, features, modules, frontend, backend, technologies)
         parse_controller = ParseController(repo_path)
-        print(f"Created project with ID: {project['id']}")
+
         result = await parse_controller.parse_project(project_id=project['id'])
+
         return project
 
     async def get_project(self, project_id: str) -> Project:
@@ -36,8 +37,23 @@ class ProjectController:
     async def delete_project(self, project_id: str):
         project = Project(id=project_id, name="", path="", description="")
         return await project.delete()
-    
+
     async def project_stats(self, project_id: str):
         project = Project(id=project_id, name="", path="", description="")
         stats = await project.fetch_stats(project_id)
         return stats
+
+if __name__ == "__main__":
+    import asyncio
+    controller = ProjectController()
+    print("Exter Your Project Details: ")
+    name = input("Project Name: ")
+    description = input("Project Description: ")
+    repo_path = input("Project Repo Path: ")
+    features = input("Project Features (comma-separated): ")
+    modules = input("Project Modules (comma-separated): ")
+    frontend = input("Project Frontend: ")
+    backend = input("Project Backend: ")
+    technologies = input("Project Technologies (comma-separated): ")
+    project = asyncio.run(controller.create_project(name, description, repo_path, features, modules, frontend, backend, technologies))
+    print(f"Project created: {project}")
