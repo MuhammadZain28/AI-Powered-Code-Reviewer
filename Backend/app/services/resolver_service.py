@@ -1,21 +1,28 @@
+import json
 from app.call_graph_resolver import CallGraphResolver
 from app.managers.call_graph import CallGraphDBFetcher
 
 async def resolve_call_graph():
-    data = await CallGraphDBFetcher(project_id="13931f2a-a817-4ada-9d21-f4f4164ad1c8").fetch()
-    return CallGraphResolver(
-        chunks=data['chunks'],
-        raw_calls=data['raw_calls'],
-        import_names=data['import_names'],
-        import_map=data['import_map'],
-        import_module_map=data['import_module_map'],
-        global_chunk_index=data['global_chunk_index'],
-        external_lib_names=data['external_lib_names'],
-        use_stdlib_detection=True,
-    )
+    fetcher = CallGraphDBFetcher(project_id="13931f2a-a817-4ada-9d21-f4f4164ad1c8")
+
+    file_ids           = await fetcher.fetch_file_ids()
+    global_chunk_index = await fetcher.fetch_global_chunk_index()
+
+    print(f"Files to resolve: {len(file_ids)}, global index entries: {len(global_chunk_index)}")
+
+    results = []
+    for file_id in file_ids:
+        kwargs   = await fetcher.fetch_for_file(file_id, global_chunk_index)
+        resolver = CallGraphResolver(**kwargs, use_stdlib_detection=True)
+        result   = resolver.resolve()
+        results.extend(result.to_record_list())
+
+    print(f"{json.dumps(results, indent=2)}")
+
+    await fetcher.copy_resolved_calls_to_database(results)
+
+    return results
 
 if __name__ == "__main__":
     import asyncio
-    resolver = asyncio.run(resolve_call_graph())
-    result = resolver.resolve()
-    print(result.stats())
+    asyncio.run(resolve_call_graph())

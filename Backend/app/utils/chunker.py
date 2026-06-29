@@ -12,9 +12,10 @@ import tree_sitter_typescript
 import tree_sitter_python
 from app.utils.logger import get_logger
 import re
+from app.utils.call_filter import classify_call
 
 
-@dataclass
+@dataclass(frozen=True)
 class ClassInfo:
     id: str
     file_id: str
@@ -45,7 +46,7 @@ class ClassInfo:
         )
 
 
-@dataclass
+@dataclass(frozen=True)
 class FunctionInfo:
     id: str
     file_id: str
@@ -108,6 +109,19 @@ class ClassAttributeInfo:
         )
 
 
+@dataclass(frozen=True)
+class CallInfo:
+    caller_id: str
+    function_name: str
+    line_number: int
+
+    def to_record(self):
+        return (
+            self.caller_id,
+            self.function_name,
+            self.line_number
+        )
+
 LANGUAGES = {
     "Python":             Language(tree_sitter_python.language()),
     "JavaScript":         Language(tree_sitter_javascript.language()),
@@ -144,15 +158,17 @@ class Chunker:
         self.file_id         = file_id
         self.classes         = []
         self.imports         = []
-        self.import_symbols = []
+        self.import_symbols  = []
         self.calls           = []
         self.attributes      = []
         self.chunks          = []
 
-        self.class_name   = None
-        self.inheritances = []
+        self.class_name      = None
+        self.inheritances    = []
 
-        self.__logger = get_logger("Chunker")
+        self.functions       = {}
+
+        self.__logger        = get_logger("Chunker")
 
     def get_parser(self):
         parser = Parser()
@@ -355,7 +371,7 @@ class Chunker:
         return inheritances
 
     def extract_calls(self, node, caller_id):
-        calls      = []
+        calls      = set()
         complexity = 1
 
         COMPLEXITY_NODES = {
@@ -380,17 +396,17 @@ class Chunker:
 
                 func_node = curr.child_by_field_name("function")
                 if func_node:
-                    calls.append((
-                        caller_id,
-                        self.get_source_segment(func_node),
-                        func_node.start_point[0] + 1
+                    calls.add(CallInfo(
+                        caller_id=caller_id,
+                        function_name=self.get_source_segment(func_node),
+                        line_number=func_node.start_point[0] + 1
                     ))
 
             for child in curr.children:
                 traverse(child)
 
         traverse(node)
-        return calls, complexity
+        return list(calls), complexity
 
     def chunk_code(self) -> dict:
         parser    = self.get_parser()
@@ -404,7 +420,7 @@ class Chunker:
             "classes":        self.classes,
             "imports":        self.imports,
             "chunks":         self.chunks,
-            "calls":          self.calls,
+            "calls":          classify_call(self.calls, self.language),
             "attributes":     self.attributes,
             "import_symbols": self.import_symbols,
         }
@@ -492,6 +508,8 @@ class Chunker:
 
         score = self.classify_function(name, start, end, complexity, len(calls))
 
+        self.functions[name] = id
+
         return FunctionInfo(
             id=id,
             file_id=self.file_id,
@@ -531,3 +549,18 @@ class Chunker:
     def get_source_segment(self, node):
         return self.source_code[node.start_byte:node.end_byte]
 
+
+if __name__ == "__main__":
+
+    calls = [
+        CallInfo(caller_id="id1", function_name="os.path.join", line_number=10),
+        CallInfo(caller_id="id2", function_name="sys.exit", line_number=20),
+        CallInfo(caller_id="id1", function_name="self.foo", line_number=30),
+        CallInfo(caller_id="id2", function_name="self.bar", line_number=40),
+        CallInfo(caller_id="id1", function_name="self.baz", line_number=50),
+        CallInfo(caller_id="id2", function_name="print", line_number=60),
+    ]
+
+    filtered_calls = classify_call(calls, "python")
+    for call in filtered_calls:
+        print(call.to_record())

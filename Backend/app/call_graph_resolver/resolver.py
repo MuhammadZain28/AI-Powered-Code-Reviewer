@@ -44,16 +44,10 @@ import logging
 import sys
 from typing import Any
 
-from app.call_graph_resolver.models.call_resolution import (
-    CallResolutionResult,
-    CallKind,
-    ResolutionStatus,
-    ResolvedCall,
-)
+from app.call_graph_resolver.models.call_resolution import (CallResolutionResult, ResolutionStatus, ResolvedCall)
 from app.call_graph_resolver.resolvers.internal_resolver import InternalCallResolver
 from app.call_graph_resolver.resolvers.cross_resolver import CrossFileCallResolver
 from app.call_graph_resolver.resolvers.external_resolver import ExternalLibraryResolver
-from app.call_graph_resolver.call_graph import CallGraphDBFetcher
 
 logger = logging.getLogger(__name__)
 

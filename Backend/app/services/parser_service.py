@@ -253,5 +253,5 @@ class ParserService:
 
 if __name__ == "__main__":
     parser_service = ParserService(repo_path="D:/Project/AI-Powered Code Reviewer/Backend/app/utils")
-    result = parser_service.parse_project(project_id="test_project", changed_files=["D:/Project/AI-Powered Code Reviewer/Backend/app/utils/tokenizer.py"])
-    print(f"Parsed project result: {json.dumps(result['chunks'], indent=4)}")
+    result = parser_service.parse_project(project_id="test_project", changed_files=["D:/Project/AI-Powered Code Reviewer/Backend/app/utils/chunker.py"])
+    print(f"Parsed project result: {len(result['calls'])}")

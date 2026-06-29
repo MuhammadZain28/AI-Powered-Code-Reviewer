@@ -301,7 +301,7 @@ def _read_specifier_list(stream: TokenStream):
             if alias:
                 aliases.append(alias)
             else:
-                aliases.append(None)
+                aliases.append(tok.value)   # no alias → use module name
             continue
 
     return modules, aliases
@@ -368,7 +368,7 @@ def _parse_javascript(tokens: List[Token], language: str, file_id: str) -> Norma
         return NormalizedImport(
             source  = mod,
             type    = 'default',
-            import_modules=[{"module": mod, "alias": None, "import_id": __import__id}],
+            import_modules=[{"module": mod, "alias": mod, "import_id": __import__id}],
             file_id = file_id,
             id = __import__id
         )
@@ -415,7 +415,7 @@ def _parse_javascript(tokens: List[Token], language: str, file_id: str) -> Norma
         # No 'from' — bare  import 'side-effect-module'
         source_tok = stream.consume()
         source     = source_tok.value if source_tok else ""
-        import_modules = [{"module": source, "alias": None, "import_id": __import__id}]
+        import_modules = [{"module": source, "alias": source, "import_id": __import__id}]
         file_id    = file_id
 
     return NormalizedImport(source=source, type='default', import_modules=import_modules, file_id=file_id, id=__import__id)
@@ -446,7 +446,7 @@ def _parse_java(tokens: List[Token], language: str, file_id: str) -> NormalizedI
     return NormalizedImport(
         source  = source,
         type    = 'default',
-        import_modules=[{"module": module, "alias": None, "import_id": __import__id}] if module else [],
+        import_modules=[{"module": module, "alias": module, "import_id": __import__id}] if module else [],
         file_id = file_id,
         id = __import__id
     )
@@ -467,7 +467,7 @@ def _parse_c(tokens: List[Token], language: str, file_id: str) -> NormalizedImpo
     return NormalizedImport(
         source  = source,
         type    = 'default',
-        import_modules=[{"module": module, "alias": None, "import_id": __import__id} for module in source.split("/")[-1:]],   # module is the filename
+        import_modules=[{"module": module, "alias": module, "import_id": __import__id} for module in source.split("/")[-1:]],   # module is the filename
         file_id = file_id,
         id = __import__id
     )
@@ -505,3 +505,23 @@ def normalize(code: str, language: str, file_id: Optional[str] = None) -> Normal
         raise ValueError(f"Unsupported language: {language!r}")
 
     return parser(tokens, language, file_id).to_dict()
+
+if __name__ == "__main__":
+
+    # Example usage
+    imports = [
+        ("import React, { useEffect as effect } from 'react'", "JavaScript", "file1"),
+        ("import * as ns from 'mod'", "JavaScript", "file2"),
+        ("import type { Foo } from './foo'", "TypeScript", "file3"),
+        ("const fs = require('fs')", "JavaScript", "file4"),
+        ("export { Button as Btn } from './Button'", "JavaScript", "file5"),
+        ("from os.path import join, dirname", "Python", "file7"),
+        ("from app.utils import tokenizer as tk", "Python", "file10"),
+        ("import java.util.List;", "Java", "file8"),
+        ("#include <iostream>", "C", "file9"),
+        ("import java.util.List;", "Java", "file8"),
+        ("#include <iostream>", "C", "file9"),
+    ]
+    for code, language, file_id in imports:
+        normalized_import = normalize(code, language, file_id)
+        print(normalized_import)

@@ -150,7 +150,7 @@ class ParseController:
             'classes': { 'data': classes, 'columns': ['id', 'file_id', 'name', 'start_line', 'end_line', 'hash', 'inheritances'] },
             'class_attributes': { 'data': attributes, 'columns': ['class_id', 'name', 'attribute_type', 'default_value', 'line_number', 'is_static'] },
             'functions': { 'data': chunks, 'columns': ['id', 'file_id', 'class_id', 'name', 'start_line', 'end_line',  'content', 'signature', 'cyclomatic_complexity', 'score', 'hash'] },
-            'call_graph': { 'data': calls, 'columns': ['caller_id', 'function_name', 'call_line'] }
+            'function_calls': { 'data': calls, 'columns': ['caller_id', 'function_name', 'call_line'] }
         }
 
         start_time = time.time()
