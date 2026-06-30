@@ -3,7 +3,7 @@ from app.call_graph_resolver import CallGraphResolver
 from app.managers.call_graph import CallGraphDBFetcher
 
 async def resolve_call_graph():
-    fetcher = CallGraphDBFetcher(project_id="13931f2a-a817-4ada-9d21-f4f4164ad1c8")
+    fetcher = CallGraphDBFetcher(project_id="ad124d38-5776-42b4-8fa3-b10648a6b901")
 
     file_ids           = await fetcher.fetch_file_ids()
     global_chunk_index = await fetcher.fetch_global_chunk_index()
@@ -17,9 +17,8 @@ async def resolve_call_graph():
         result   = resolver.resolve()
         results.extend(result.to_record_list())
 
-    print(f"{json.dumps(results, indent=2)}")
 
-    await fetcher.copy_resolved_calls_to_database(results)
+    # await fetcher.copy_resolved_calls_to_database(results)
 
     return results
 

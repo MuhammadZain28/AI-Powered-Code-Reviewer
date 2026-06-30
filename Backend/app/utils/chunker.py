@@ -154,6 +154,7 @@ JS_LIFECYCLE = {
 class Chunker:
     def __init__(self, source_code: str, language: str, file_id: str):
         self.source_code     = source_code
+        self.source_bytes    = source_code.encode('utf-8')
         self.language        = language
         self.file_id         = file_id
         self.classes         = []
@@ -181,17 +182,17 @@ class Chunker:
     def extract_class(self, node):
         if node.type in {"class_definition", "class_declaration"}:
 
-            self.class_name = self.get_node_name(node)
+            class_name = self.get_node_name(node)
             code            = self.get_source_segment(node)
             code_hash       = self.calculate_hash(code)
-            class_id        = str(uuid7())
+            class_id        = uuid7()
 
             inheritances      = self.extract_inheritances(node)
             self.inheritances = inheritances
 
             self.attributes.extend(self.extract_class_attributes(node, class_id))
             self.classes.append(
-                self.build_class(class_id, node, self.class_name, code_hash, inheritances)
+                self.build_class(class_id, node, class_name, code_hash, inheritances)
             )
 
             self.extract_chunks(node, class_id=class_id)
@@ -410,9 +411,7 @@ class Chunker:
 
     def chunk_code(self) -> dict:
         parser    = self.get_parser()
-        self.source_code = self.clean_code(self.source_code)
-
-        tree      = parser.parse(bytes(self.source_code, "utf8"))
+        tree      = parser.parse(self.source_bytes)
         root_node = tree.root_node
         self.extract_class(root_node)
 
@@ -424,19 +423,6 @@ class Chunker:
             "attributes":     self.attributes,
             "import_symbols": self.import_symbols,
         }
-
-    def clean_code(self, code: str) -> str:
-        code = re.sub(r"^\s*#.*$\n?", "", code, flags=re.MULTILINE)
-
-        code = re.sub(r"^\s*//.*$\n?", "", code, flags=re.MULTILINE)
-
-        code = re.sub(r"/\*.*?\*/", "", code, flags=re.DOTALL)
-
-        code = re.sub(r"[ \t]+$", "", code, flags=re.MULTILINE)
-
-        code = re.sub(r"\n{3,}", "\n\n", code)
-
-        return code.strip()
 
     def build_class(self, id, node, name, code_hash, inheritances):
 
@@ -472,7 +458,11 @@ class Chunker:
             elif child.type == "identifier":
                 params.append(self.get_source_segment(child))
             elif child.type == "typed_parameter":
-                p_name = child.child_by_field_name("name")
+                p_name = next(
+                    (c for c in child.children
+                    if c.type in {"identifier", "list_splat_pattern", "dictionary_splat_pattern"}),
+                    None
+                )
                 p_type = child.child_by_field_name("type")
                 name_s = self.get_source_segment(p_name) if p_name else ""
                 type_s = self.get_source_segment(p_type) if p_type else ""
@@ -547,20 +537,5 @@ class Chunker:
         return None
 
     def get_source_segment(self, node):
-        return self.source_code[node.start_byte:node.end_byte]
+        return self.source_bytes[node.start_byte:node.end_byte].decode('utf-8')
 
-
-if __name__ == "__main__":
-
-    calls = [
-        CallInfo(caller_id="id1", function_name="os.path.join", line_number=10),
-        CallInfo(caller_id="id2", function_name="sys.exit", line_number=20),
-        CallInfo(caller_id="id1", function_name="self.foo", line_number=30),
-        CallInfo(caller_id="id2", function_name="self.bar", line_number=40),
-        CallInfo(caller_id="id1", function_name="self.baz", line_number=50),
-        CallInfo(caller_id="id2", function_name="print", line_number=60),
-    ]
-
-    filtered_calls = classify_call(calls, "python")
-    for call in filtered_calls:
-        print(call.to_record())

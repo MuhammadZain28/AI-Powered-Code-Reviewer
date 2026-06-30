@@ -48,7 +48,6 @@ from __future__ import annotations
 
 import logging
 from typing import Any
-
 from app.managers.database import Database
 
 logger = logging.getLogger(__name__)
@@ -130,7 +129,8 @@ class CallGraphDBFetcher:
             SELECT
                 f.id::text      AS chunk_id,
                 f.file_id::text AS file_id,
-                f.name          AS function_name
+                f.name          AS function_name,
+                f.id::text      AS chunk_id
             FROM functions f
             JOIN files fi ON fi.id = f.file_id
             WHERE fi.project_id = $1::uuid
@@ -139,10 +139,11 @@ class CallGraphDBFetcher:
             self._project_id,
         )
 
-        index: dict[tuple[str, str], list[str]] = {}
+
+        index: dict[str, dict[str, str]] = {}
         for row in rows:
-            key = (row["file_id"], row["function_name"])
-            index.setdefault(key, []).append(row["chunk_id"])
+            key = row["file_id"]
+            index.setdefault(key, {})[row["function_name"]] = row["chunk_id"]
 
         logger.info(
             "CallGraphDBFetcher: global_chunk_index has %d entries for project=%s",
@@ -156,11 +157,7 @@ class CallGraphDBFetcher:
     # File-level fetch  (call once per file)
     # ------------------------------------------------------------------
 
-    async def fetch_for_file(
-        self,
-        file_id: str,
-        global_chunk_index: dict[tuple[str, str], list[str]],
-    ) -> dict[str, Any]:
+    async def fetch_for_file(self, file_id: str, global_chunk_index: dict[tuple[str, str], list[str]]) -> dict[str, Any]:
         """
         Fetch all resolver inputs for a single file and return them as a
         dict ready to splat directly into ``CallGraphResolver(**kwargs)``.
@@ -292,10 +289,7 @@ class CallGraphDBFetcher:
 
         return [dict(r) for r in rows]
 
-    async def _fetch_import_data_for_file(
-        self,
-        file_id: str,
-    ) -> tuple[set[str], dict[str, str], dict[str, str], set[str]]:
+    async def _fetch_import_data_for_file(self, file_id: str) -> tuple[set[str], dict[str, str], dict[str, str], set[str]]:
         """
         Fetch and shape all import information for *file_id*.
 
@@ -338,8 +332,6 @@ class CallGraphDBFetcher:
         import_module_map:  dict[str, str] = {}   # name → lib_root (external)
         external_lib_names: set[str]       = set()
 
-        # Collect internal name→module mappings before resolving to file IDs.
-        # key: effective_name  value: from_module path
         _pending_internal: dict[str, str] = {}
 
         for row in rows:
@@ -348,7 +340,6 @@ class CallGraphDBFetcher:
             symbol       = row["symbol"]
             alias        = row["alias"]
 
-            # Alias beats symbol beats bare module name.
             effective_name: str | None = alias or symbol or from_module or None
 
             if not effective_name:
@@ -356,51 +347,12 @@ class CallGraphDBFetcher:
 
             import_names.add(effective_name)
 
-            if is_external:
-                lib_root = from_module or effective_name
-                import_module_map[effective_name] = lib_root
-                external_lib_names.add(lib_root)
-            else:
-                # Will be resolved to file_id in the next step.
-                _pending_internal[effective_name] = from_module
+            lib_root = from_module or effective_name
+            import_module_map[effective_name] = lib_root
+            external_lib_names.add(lib_root)
 
-        if _pending_internal:
-            import_map = await self._resolve_internal_to_file_ids(_pending_internal)
 
         return import_names, import_map, import_module_map, external_lib_names
-
-    async def _resolve_internal_to_file_ids(
-        self,
-        name_to_module: dict[str, str],
-    ) -> dict[str, str]:
-        rows = await self.db.fetch(
-            """
-            SELECT
-                id::text AS file_id,
-                path     AS module_path
-            FROM files
-            WHERE project_id = $1::uuid
-            """,
-            self._project_id,
-        )
-
-        module_to_file_id: dict[str, str] = {
-            r["module_path"]: r["file_id"] for r in rows
-        }
-
-        resolved: dict[str, str] = {}
-        for name, module_path in name_to_module.items():
-            file_id = module_to_file_id.get(module_path)
-            if file_id:
-                resolved[name] = file_id
-            else:
-                logger.debug(
-                    "CallGraphDBFetcher: internal module '%s' has no matching "
-                    "file in project — skipping.",
-                    module_path,
-                )
-
-        return resolved
 
     async def copy_resolved_calls_to_database(self, resolved_calls: list):
         if not resolved_calls:
@@ -417,7 +369,7 @@ if __name__ == "__main__":
     import asyncio
 
     async def main() -> None:
-        project_id = "13931f2a-a817-4ada-9d21-f4f4164ad1c8"
+        project_id = "ad124d38-5776-42b4-8fa3-b10648a6b901"
 
         fetcher = CallGraphDBFetcher(project_id=project_id)
 
@@ -425,7 +377,7 @@ if __name__ == "__main__":
         global_chunk_index = await fetcher.fetch_global_chunk_index()
 
         print(f"Files to resolve: {len(file_ids)}")
-        print(f"Global chunk index entries: {len(global_chunk_index)}")
+        print(f"Global chunk index entries: {global_chunk_index}")
 
         for file_id in file_ids:
             kwargs = await fetcher.fetch_for_file(file_id, global_chunk_index)

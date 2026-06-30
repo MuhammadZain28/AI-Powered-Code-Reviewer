@@ -38,8 +38,6 @@ class ParseController:
             attributes = parsed_data['attributes']
             import_symbols = parsed_data['import_symbols']
 
-            print(f"Parsed data for project {import_symbols}:")
-
             end_time = time.time()
 
             self.__logger.info(f"Finished parsing project in {end_time - start_time:.2f} seconds. Starting to save to database...")
@@ -164,5 +162,5 @@ class ParseController:
 
 if __name__ == "__main__":
     import asyncio
-    controller = ParseController(repo_path="D:\\Project\\Test")
-    asyncio.run(controller.parse_project(project_id="13931f2a-a817-4ada-9d21-f4f4164ad1c8"))
+    controller = ParseController(repo_path="D:\\Project\\Centralized-Academic-Management\\backend")
+    asyncio.run(controller.parse_project(project_id="ad124d38-5776-42b4-8fa3-b10648a6b901"))
