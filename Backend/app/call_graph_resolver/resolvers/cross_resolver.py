@@ -85,8 +85,6 @@ def _resolve_single_call(
 
     qualifier, base = _split_call_expr(call_expr)
 
-    # --- Strategy 1: qualifier matches an imported module/object ---
-    # e.g.  `user_service.get_user()`  where `user_service` is in import_map
     if qualifier and qualifier in import_map:
         # Don't cross-resolve if the qualifier is a known external library.
         if qualifier in external_lib_names:

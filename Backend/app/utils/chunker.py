@@ -12,9 +12,10 @@ import tree_sitter_typescript
 import tree_sitter_python
 from app.utils.logger import get_logger
 import re
+from app.utils.call_filter import classify_call
 
 
-@dataclass
+@dataclass(frozen=True)
 class ClassInfo:
     id: str
     file_id: str
@@ -40,12 +41,12 @@ class ClassInfo:
             self.name,
             self.start,
             self.end,
-            self.inheritances,
             self.hash,
+            self.inheritances
         )
 
 
-@dataclass
+@dataclass(frozen=True)
 class FunctionInfo:
     id: str
     file_id: str
@@ -78,13 +79,13 @@ class FunctionInfo:
             self.file_id,
             self.class_id,
             self.name,
-            self.code,
             self.start,
             self.end,
+            self.code,
             self.signature,
+            self.complexity,
             self.score,
             self.hash,
-            self.complexity,
         )
 
 
@@ -94,6 +95,7 @@ class ClassAttributeInfo:
     name: str
     attribute_type: Optional[str]
     default_value: Optional[str]
+    line_number: int
     is_static: bool
 
     def to_record(self):
@@ -102,9 +104,23 @@ class ClassAttributeInfo:
             self.name,
             self.attribute_type,
             self.default_value,
+            self.line_number,
             self.is_static,
         )
 
+
+@dataclass(frozen=True)
+class CallInfo:
+    caller_id: str
+    function_name: str
+    line_number: int
+
+    def to_record(self):
+        return (
+            self.caller_id,
+            self.function_name,
+            self.line_number
+        )
 
 LANGUAGES = {
     "Python":             Language(tree_sitter_python.language()),
@@ -138,43 +154,45 @@ JS_LIFECYCLE = {
 class Chunker:
     def __init__(self, source_code: str, language: str, file_id: str):
         self.source_code     = source_code
+        self.source_bytes    = source_code.encode('utf-8')
         self.language        = language
         self.file_id         = file_id
         self.classes         = []
         self.imports         = []
-        self.imports_modules = []
+        self.import_symbols  = []
         self.calls           = []
         self.attributes      = []
         self.chunks          = []
 
-        self.class_name   = None
-        self.inheritances = []
+        self.class_name      = None
+        self.inheritances    = []
 
-        self.__logger = get_logger("Chunker")
+        self.functions       = {}
+
+        self.__logger        = get_logger("Chunker")
 
     def get_parser(self):
         parser = Parser()
         if self.language not in LANGUAGES:
-            self.__logger.error(f"Unsupported language: {self.language}")
             raise ValueError(f"Unsupported language: {self.language} for file")
+
         parser.language = LANGUAGES[self.language]
         return parser
 
     def extract_class(self, node):
         if node.type in {"class_definition", "class_declaration"}:
-            print(f"Extracting class from node: {node.type} at {node.start_point} to {node.end_point}")
 
-            self.class_name = self.get_node_name(node)
+            class_name = self.get_node_name(node)
             code            = self.get_source_segment(node)
             code_hash       = self.calculate_hash(code)
-            class_id        = str(uuid7())
+            class_id        = uuid7()
 
             inheritances      = self.extract_inheritances(node)
             self.inheritances = inheritances
 
             self.attributes.extend(self.extract_class_attributes(node, class_id))
             self.classes.append(
-                self.build_class(class_id, node, self.class_name, code_hash, inheritances)
+                self.build_class(class_id, node, class_name, code_hash, inheritances)
             )
 
             self.extract_chunks(node, class_id=class_id)
@@ -184,8 +202,9 @@ class Chunker:
         elif node.type in {"import_statement", "import_from_statement"}:
             import_code       = self.get_source_segment(node)
             normalized_import = normalize(import_code, self.language, file_id=self.file_id)
+
             self.imports.append(normalized_import[0])
-            self.imports_modules.extend(normalized_import[1])
+            self.import_symbols.extend(normalized_import[1])
 
         elif node.type in TARGET_NODES:
             self.extract_chunks(node, class_id=None)
@@ -251,6 +270,7 @@ class Chunker:
                             name=self.get_source_segment(left),
                             attribute_type=self._infer_type_from_node(right),
                             default_value=self.get_source_segment(right) if right else None,
+                            line_number=left.start_point[0] + 1,
                             is_static=True,
                         ).to_record())
 
@@ -265,6 +285,7 @@ class Chunker:
                             name=self.get_source_segment(left),
                             attribute_type=self.get_source_segment(type_node) if type_node else None,
                             default_value=self.get_source_segment(right) if right else None,
+                            line_number=left.start_point[0] + 1,
                             is_static=True,
                         ).to_record())
 
@@ -308,6 +329,7 @@ class Chunker:
                                 name=self.get_source_segment(attr_node),
                                 attribute_type=self._infer_type_from_node(right),
                                 default_value=self.get_source_segment(right) if right else None,
+                                line_number=left.start_point[0] + 1,
                                 is_static=False,
                             ).to_record())
 
@@ -329,6 +351,7 @@ class Chunker:
                             name=self.get_source_segment(attr_node),
                             attribute_type=self.get_source_segment(type_node) if type_node else None,
                             default_value=self.get_source_segment(right) if right else None,
+                            line_number=left.start_point[0] + 1,
                             is_static=False,
                         ).to_record())
 
@@ -349,7 +372,7 @@ class Chunker:
         return inheritances
 
     def extract_calls(self, node, caller_id):
-        calls      = []
+        calls      = set()
         complexity = 1
 
         COMPLEXITY_NODES = {
@@ -374,23 +397,21 @@ class Chunker:
 
                 func_node = curr.child_by_field_name("function")
                 if func_node:
-                    calls.append({
-                        "caller_id":     caller_id,
-                        "function_name": self.get_source_segment(func_node),
-                        "call_line":     func_node.start_point[0],
-                    })
+                    calls.add(CallInfo(
+                        caller_id=caller_id,
+                        function_name=self.get_source_segment(func_node),
+                        line_number=func_node.start_point[0] + 1
+                    ))
 
             for child in curr.children:
                 traverse(child)
 
         traverse(node)
-        return calls, complexity
+        return list(calls), complexity
 
     def chunk_code(self) -> dict:
         parser    = self.get_parser()
-        self.source_code = self.clean_code(self.source_code)
-        print(f"Cleaned source code:\n{self.source_code}\n")
-        tree      = parser.parse(bytes(self.source_code, "utf8"))
+        tree      = parser.parse(self.source_bytes)
         root_node = tree.root_node
         self.extract_class(root_node)
 
@@ -398,28 +419,10 @@ class Chunker:
             "classes":        self.classes,
             "imports":        self.imports,
             "chunks":         self.chunks,
-            "calls":          self.calls,
+            "calls":          classify_call(self.calls, self.language),
             "attributes":     self.attributes,
-            "imports_modules": self.imports_modules,
+            "import_symbols": self.import_symbols,
         }
-
-    def clean_code(self, code: str) -> str:
-        # Remove whole-line Python comments
-        code = re.sub(r"^\s*#.*$\n?", "", code, flags=re.MULTILINE)
-
-        # Remove whole-line C/JS comments
-        code = re.sub(r"^\s*//.*$\n?", "", code, flags=re.MULTILINE)
-
-        # Remove block comments
-        code = re.sub(r"/\*.*?\*/", "", code, flags=re.DOTALL)
-
-        # Remove trailing spaces
-        code = re.sub(r"[ \t]+$", "", code, flags=re.MULTILINE)
-
-        # Collapse blank lines
-        code = re.sub(r"\n{3,}", "\n\n", code)
-
-        return code.strip()
 
     def build_class(self, id, node, name, code_hash, inheritances):
 
@@ -455,7 +458,11 @@ class Chunker:
             elif child.type == "identifier":
                 params.append(self.get_source_segment(child))
             elif child.type == "typed_parameter":
-                p_name = child.child_by_field_name("name")
+                p_name = next(
+                    (c for c in child.children
+                    if c.type in {"identifier", "list_splat_pattern", "dictionary_splat_pattern"}),
+                    None
+                )
                 p_type = child.child_by_field_name("type")
                 name_s = self.get_source_segment(p_name) if p_name else ""
                 type_s = self.get_source_segment(p_type) if p_type else ""
@@ -490,6 +497,8 @@ class Chunker:
         signature = self.get_function_signature(node, name)
 
         score = self.classify_function(name, start, end, complexity, len(calls))
+
+        self.functions[name] = id
 
         return FunctionInfo(
             id=id,
@@ -528,26 +537,5 @@ class Chunker:
         return None
 
     def get_source_segment(self, node):
-        return self.source_code[node.start_byte:node.end_byte]
+        return self.source_bytes[node.start_byte:node.end_byte].decode('utf-8')
 
-
-if __name__ == "__main__":
-    sample_code = """
-function add(a, b) {
-    return a + b;
-}
-
-function greet(name = "world") {
-    const msg = "Hello, " + name;
-    console.log(msg);
-    return msg;
-}
-"""
-    chunker = Chunker(sample_code, "JavaScript", "file_1")
-    result  = chunker.chunk_code()
-
-    print(json.dumps(
-        {k: [list(r) if isinstance(r, tuple) else r for r in v]
-         for k, v in result.items()},
-        indent=4,
-    ))

@@ -28,7 +28,6 @@ class ParseController:
             start_time = time.time()
             parsed_data = self.parser_service.parse_project(project_id=project_id)
 
-
             self.__logger.info(f"Finished parsing project")
 
             files = parsed_data['files']
@@ -37,60 +36,15 @@ class ParseController:
             calls = parsed_data['calls']
             chunks = parsed_data['chunks']
             attributes = parsed_data['attributes']
-            import_modules = parsed_data['import_modules']
+            import_symbols = parsed_data['import_symbols']
 
             end_time = time.time()
 
             self.__logger.info(f"Finished parsing project in {end_time - start_time:.2f} seconds. Starting to save to database...")
 
-            await self.copy_table_to_database(files, imports, classes, calls, chunks, attributes, import_modules, project_id)
-
-            queue = []
-            for chunk in chunks:
-                if chunk[9] > 15:
-                    queue.append((chunk[0], chunk[9], datetime.now(), "pending"))
-
-            _ = await Review().build_queue(queue)
+            await self.copy_table_to_database(files, imports, classes, calls, chunks, attributes, import_symbols, project_id)
 
             start_time = time.time()
-
-            ids = await Chunk().fetch_embedding_id(project_id)
-
-            print(f"IDs: {ids}")
-
-            embedding_data = {}
-            chunk_calls = {}
-            for file in files:
-                embedding_data[file.id] = {
-                    'chunks': []
-                }
-
-            for chunk in chunks:
-                embedding_data[chunk[1]]['chunks'].append({
-                    'id': chunk[0],
-                    'class': chunk[3],
-                    'name': chunk[4],
-                    'content': chunk[5],
-                    'type': chunk[8],
-                    'docstring': chunk[10],
-                    'parameters': chunk[11],
-                    'return_values': chunk[12]
-                })
-                chunk_calls[chunk[0]] = {
-                    'calls': set(),
-                    'libraries': set()
-                }
-
-            for call in calls:
-                chunk_calls[call[0]]['calls'].add(call[2])
-                if call[5] is not None:
-                    chunk_calls[call[0]]['libraries'].add(call[5])
-
-
-            vectors = self.embedding_service.embed_chunks(embedding_data, chunk_calls)
-
-            if len(vectors) == len(ids):
-                self.faiss_index.add_embeddings(vectors, ids)
 
             end_time = time.time()
 
@@ -103,10 +57,10 @@ class ParseController:
                 "calls": len(calls),
                 "chunks": len(chunks),
                 "attributes": len(attributes),
-                "import_modules": len(import_modules)
+                "import_symbols": len(import_symbols)
             }
+
         except Exception as e:
-            self.__logger.error(f"Error parsing project: {e}")
             self.__logger.error(traceback.format_exc())
             raise e
 
@@ -140,7 +94,7 @@ class ParseController:
         calls = parsed_data['calls']
         chunks = parsed_data['chunks']
         attributes = parsed_data['attributes']
-        import_modules = parsed_data['import_modules']
+        import_symbols = parsed_data['import_symbols']
 
         end_time = time.time()
 
@@ -156,9 +110,9 @@ class ParseController:
 
         imports.extend(modified_data['imports'])
         attributes.extend(modified_data['attributes'])
-        import_modules.extend(modified_data['import_modules'])
+        import_symbols.extend(modified_data['import_symbols'])
         calls.extend(modified_data['calls'])
-        await self.copy_table_to_database([], imports, classes, calls, chunks, attributes, import_modules, project_id)
+        await self.copy_table_to_database([], imports, classes, calls, chunks, attributes, import_symbols, project_id)
 
         return {
             "files": len(files),
@@ -167,7 +121,7 @@ class ParseController:
             "calls": len(calls),
             "chunks": len(chunks) + len(modified_data['chunks']),
             "attributes": len(attributes),
-            "import_modules": len(import_modules)
+            "import_symbols": len(import_symbols)
         }
 
     async def database_updates_for_changes(self, files: list, classes: list, chunks: list):
@@ -177,7 +131,7 @@ class ParseController:
 
         self.__logger.info(f"Database update results - Files: {file_result}, Classes: {class_result}, Chunks: {chunk_result}")
 
-    async def copy_table_to_database(self, files: list, imports: list, classes: list, calls: list, chunks: list, attributes: list, import_modules: list, project_id: str):
+    async def copy_table_to_database(self, files: list, imports: list, classes: list, calls: list, chunks: list, attributes: list, import_symbols: list, project_id: str):
         start_time = time.time()
 
         await Database().connect()
@@ -186,24 +140,15 @@ class ParseController:
 
         self.__logger.info(f"Connected to database in {end_time - start_time:.2f} seconds. Starting to save data...")
 
-        file_records = [
-            file.to_record() if hasattr(file, "to_record") else file
-            for file in files
-        ]
-
-        attribute_records = [
-            attribute.to_record() if hasattr(attribute, "to_record") else attribute
-            for attribute in attributes
-        ]
 
         table_data = {
-            'files': { 'data': file_records, 'columns': ['id', 'project_id', 'path', 'language', 'hash'] },
-            'imports': { 'data': imports, 'columns': ['id', 'file_id', 'source', 'type'] },
-            'import_modules': { 'data': import_modules, 'columns': ['import_id', 'module', 'alias'] },
-            'classes': { 'data': classes, 'columns': ['id', 'file_id', 'name', 'start_line', 'end_line', 'docstring', 'inheritance', 'hash'] },
-            'class_attributes': { 'data': attribute_records, 'columns': ['class_id', 'name', 'attribute_type', 'default_value', 'is_static'] },
-            'chunks': { 'data': chunks, 'columns': ['id', 'file_id', 'class_id', 'class_name', 'name', 'content', 'start_line', 'end_line', 'chunk_type', 'score', 'hash', 'docstring', 'parameters', 'return_values', 'complexity'] },
-            'calls': { 'data': calls, 'columns': ['caller_id', 'call_type', 'function_name', 'source', 'resolve_to', 'library', 'callee_id'] }
+            'files': { 'data': files, 'columns': ['id', 'project_id', 'path', 'language', 'total_lines', 'hash'] },
+            'imports': { 'data': imports, 'columns': ['id', 'file_id', 'from_module', 'type'] },
+            'import_symbols': { 'data': import_symbols, 'columns': ['import_id', 'symbol', 'alias'] },
+            'classes': { 'data': classes, 'columns': ['id', 'file_id', 'name', 'start_line', 'end_line', 'hash', 'inheritances'] },
+            'class_attributes': { 'data': attributes, 'columns': ['class_id', 'name', 'attribute_type', 'default_value', 'line_number', 'is_static'] },
+            'functions': { 'data': chunks, 'columns': ['id', 'file_id', 'class_id', 'name', 'start_line', 'end_line',  'content', 'signature', 'cyclomatic_complexity', 'score', 'hash'] },
+            'function_calls': { 'data': calls, 'columns': ['caller_id', 'function_name', 'call_line'] }
         }
 
         start_time = time.time()
@@ -215,11 +160,7 @@ class ParseController:
         self.__logger.info(f"Finished saving project {project_id} in {end_time - start_time:.2f} seconds")
 
 
-    def load_faiss_index(self):
-        self.faiss_index.load_index()
-        return self.faiss_index.index.ntotal
-
 if __name__ == "__main__":
     import asyncio
-    controller = ParseController(repo_path="D:\\Project\\Test")
-    asyncio.run(controller.parse_project(project_id="21ccbbaa-049d-434e-bbc9-65f2e89660fa"))
+    controller = ParseController(repo_path="D:\\Project\\Centralized-Academic-Management\\backend")
+    asyncio.run(controller.parse_project(project_id="ad124d38-5776-42b4-8fa3-b10648a6b901"))

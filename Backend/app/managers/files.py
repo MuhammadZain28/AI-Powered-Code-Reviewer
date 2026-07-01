@@ -10,6 +10,7 @@ class FileRecord:
     project_id: str
     path: str
     language: str
+    lines: int
     hash: str
 
     def to_record(self):
@@ -18,6 +19,7 @@ class FileRecord:
             self.project_id,
             self.path,
             self.language,
+            self.lines,
             self.hash,
         )
 

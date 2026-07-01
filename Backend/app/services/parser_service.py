@@ -111,6 +111,7 @@ class ParserService:
             project_id=project_id,
             path=file_path,
             language=language,
+            lines=code.count('\n') + 1,
             hash=self.file_hash(code),
         )
 
@@ -132,7 +133,7 @@ class ParserService:
         project_chunks         = []
         project_calls          = []
         project_attributes     = []
-        project_import_modules = []
+        project_import_symbols = []
 
         for file in code_files:
             language = self.detect_language(file)
@@ -149,7 +150,7 @@ class ParserService:
             project_chunks.extend(chunked_code.get('chunks', []))
             project_calls.extend(chunked_code.get('calls', []))
             project_attributes.extend(chunked_code.get('attributes', []))
-            project_import_modules.extend(chunked_code.get('import_symbols', []))
+            project_import_symbols.extend(chunked_code.get('import_symbols', []))
 
             self.__logger.info(
                 f"Extracted {len(chunked_code.get('chunks', []))} code chunks from {file}"
@@ -162,14 +163,14 @@ class ParserService:
             'chunks':         project_chunks,
             'calls':          project_calls,
             'attributes':     project_attributes,
-            'import_symbols': project_import_modules,
+            'import_symbols': project_import_symbols,
         }
 
     def update_changed_chunks(self, chunk_map: dict, class_map: dict, files_in_db: dict) -> dict:
         modified_files          = []
         modified_chunks         = []
         modified_attributes     = []
-        modified_import_modules = []
+        modified_import_symbols = []
         modified_classes        = []
         modified_imports        = []
         modified_calls          = []
@@ -189,7 +190,7 @@ class ParserService:
             modified_calls.extend(chunked_code.get('calls', []))
             modified_attributes.extend(chunked_code.get('attributes', []))
 
-            modified_import_modules.extend(chunked_code.get('import_symbols', []))
+            modified_import_symbols.extend(chunked_code.get('import_symbols', []))
 
             class_map = chunked_code.get('class_map', {})
             chunk_map = chunked_code.get('chunk_map', {})
@@ -210,7 +211,7 @@ class ParserService:
             'chunks':         modified_chunks,
             'calls':          modified_calls,
             'attributes':     modified_attributes,
-            'import_symbols': modified_import_modules,
+            'import_symbols': modified_import_symbols,
         }
 
     def chunk_change(self, code: str, language: str, file_path: str, id: str, chunk_map: dict, class_map: dict) -> dict:
@@ -252,5 +253,5 @@ class ParserService:
 
 if __name__ == "__main__":
     parser_service = ParserService(repo_path="D:/Project/AI-Powered Code Reviewer/Backend/app/utils")
-    result = parser_service.parse_project(project_id="test_project", changed_files=["D:/Project/AI-Powered Code Reviewer/Backend/app/utils/tokenizer.py"])
-    print(f"Parsed project result: {json.dumps(result['chunks'], indent=4)}")
+    result = parser_service.parse_project(project_id="test_project", changed_files=["D:/Project/AI-Powered Code Reviewer/Backend/app/utils/chunker.py"])
+    print(f"Parsed project result: {len(result['calls'])}")
